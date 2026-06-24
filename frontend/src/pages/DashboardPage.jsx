@@ -19,6 +19,7 @@ export function DashboardPage() {
   const [devices, setDevices] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [showForm, setShowForm] = useState(false)
+  const [editingDevice, setEditingDevice] = useState(null)
   const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
   const [testingId, setTestingId] = useState(null)
@@ -36,22 +37,75 @@ export function DashboardPage() {
     setForm({ ...form, [name]: type === "checkbox" ? checked : value })
   }
 
+  function startCreate() {
+    setEditingDevice(null)
+    setForm(emptyForm)
+    setShowForm((value) => !value)
+    setMessage("")
+  }
+
+  function startEdit(device) {
+    setEditingDevice(device)
+    setForm({
+      name: device.name,
+      connection_type: device.connection_type,
+      host: device.host,
+      port: device.port,
+      username: device.username,
+      auth_method: device.auth_method,
+      password: "",
+      private_key: "",
+      active: device.active,
+    })
+    setShowForm(true)
+    setMessage("Secrets are not shown after saving. Enter a new password or SSH key only if you want to replace it.")
+  }
+
+  function cancelForm() {
+    setEditingDevice(null)
+    setForm(emptyForm)
+    setShowForm(false)
+  }
+
   async function submit(event) {
     event.preventDefault()
     setBusy(true)
     setMessage("")
     try {
-      const payload = {
+      const basePayload = {
         ...form,
         port: Number(form.port),
-        password: form.auth_method === "password" ? form.password : null,
-        private_key: form.auth_method === "ssh_key" ? form.private_key : null,
       }
-      await api.createDevice(payload)
+      if (editingDevice) {
+        const payload = {
+          name: basePayload.name,
+          host: basePayload.host,
+          port: basePayload.port,
+          username: basePayload.username,
+          auth_method: basePayload.auth_method,
+          active: basePayload.active,
+        }
+        if (basePayload.auth_method === "password" && basePayload.password) {
+          payload.password = basePayload.password
+        }
+        if (basePayload.auth_method === "ssh_key" && basePayload.private_key) {
+          payload.private_key = basePayload.private_key
+        }
+        await api.updateDevice(editingDevice.id, payload)
+        setMessage("Device updated.")
+      } else {
+        const payload = {
+          ...basePayload,
+          password: basePayload.auth_method === "password" ? basePayload.password : null,
+          private_key: basePayload.auth_method === "ssh_key" ? basePayload.private_key : null,
+        }
+        await api.createDevice(payload)
+        setMessage("Device added.")
+      }
       setForm(emptyForm)
+      setEditingDevice(null)
       setShowForm(false)
       await loadDevices()
-      setMessage("Device added.")
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -86,7 +140,7 @@ export function DashboardPage() {
           <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Devices</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">Add SSH/SFTP connections and test them from one self-hosted control panel.</p>
         </div>
-        <button className="btn-primary w-full sm:w-auto" onClick={() => setShowForm((value) => !value)}>
+        <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
           <Plus size={18} aria-hidden="true" />
           Add connection
         </button>
@@ -96,7 +150,7 @@ export function DashboardPage() {
 
       {showForm && (
         <section className="rounded-lg border border-line bg-panel p-4 sm:p-5">
-          <h3 className="mb-4 text-lg font-semibold text-ink">New connection</h3>
+          <h3 className="mb-4 text-lg font-semibold text-ink">{editingDevice ? "Edit connection" : "New connection"}</h3>
           <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={submit}>
             <div>
               <label className="label" htmlFor="name">Friendly name</label>
@@ -104,7 +158,7 @@ export function DashboardPage() {
             </div>
             <div>
               <label className="label" htmlFor="connection_type">Connection type</label>
-              <select className="field mt-1" id="connection_type" name="connection_type" value={form.connection_type} onChange={update}>
+              <select className="field mt-1" id="connection_type" name="connection_type" value={form.connection_type} onChange={update} disabled={Boolean(editingDevice)}>
                 <option value="ssh_sftp">SSH/SFTP</option>
                 <option value="smb" disabled>SMB soon</option>
               </select>
@@ -131,12 +185,12 @@ export function DashboardPage() {
             {form.auth_method === "password" ? (
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="label" htmlFor="password">Password</label>
-                <input className="field mt-1" id="password" name="password" type="password" value={form.password} onChange={update} autoComplete="new-password" required />
+                <input className="field mt-1" id="password" name="password" type="password" value={form.password} onChange={update} autoComplete="new-password" required={!editingDevice} placeholder={editingDevice ? "Leave blank to keep current password" : ""} />
               </div>
             ) : (
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="label" htmlFor="private_key">Private key</label>
-                <textarea className="field mt-1 min-h-36" id="private_key" name="private_key" value={form.private_key} onChange={update} required />
+                <textarea className="field mt-1 min-h-36" id="private_key" name="private_key" value={form.private_key} onChange={update} required={!editingDevice} placeholder={editingDevice ? "Leave blank to keep current SSH key" : ""} />
               </div>
             )}
             <label className="flex min-h-11 items-center gap-3 text-sm text-ink">
@@ -144,8 +198,8 @@ export function DashboardPage() {
               Active
             </label>
             <div className="flex flex-col gap-3 sm:flex-row md:col-span-2 xl:col-span-3">
-              <button className="btn-primary" disabled={busy}>{busy ? "Saving..." : "Save connection"}</button>
-              <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+              <button className="btn-primary" disabled={busy}>{busy ? "Saving..." : editingDevice ? "Save changes" : "Save connection"}</button>
+              <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
             </div>
           </form>
         </section>
@@ -178,15 +232,15 @@ export function DashboardPage() {
                   <Wifi size={17} aria-hidden="true" />
                   {testingId === device.id ? "Testing" : "Test"}
                 </button>
-                <button className="btn-secondary px-3" disabled title="Terminal planned">
+                <button className="btn-secondary px-3" disabled title="Terminal coming soon">
                   <Terminal size={17} aria-hidden="true" />
-                  Terminal
+                  Terminal soon
                 </button>
-                <button className="btn-secondary px-3" disabled title="File explorer planned">
+                <button className="btn-secondary px-3" disabled title="File explorer coming soon">
                   <FolderOpen size={17} aria-hidden="true" />
-                  Files
+                  Files soon
                 </button>
-                <button className="btn-secondary px-3" disabled title="Edit planned">
+                <button className="btn-secondary px-3" onClick={() => startEdit(device)}>
                   <Pencil size={17} aria-hidden="true" />
                   Edit
                 </button>

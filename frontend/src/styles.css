@@ -35,9 +35,9 @@ textarea {
 }
 
 .btn-secondary {
-  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink transition hover:border-signal/70;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink transition hover:border-signal/70 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-line;
 }
 
 .btn-danger {
-  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-900/60 bg-red-950/40 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-500;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-900/60 bg-red-950/40 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-500 disabled:cursor-not-allowed disabled:opacity-45;
 }
