@@ -84,6 +84,7 @@ export function DashboardPage() {
   const [filesTargetType, setFilesTargetType] = useState("device")
   const [sharesDevice, setSharesDevice] = useState(null)
   const [shareForm, setShareForm] = useState(emptyShareForm)
+  const [editingShare, setEditingShare] = useState(null)
   const [shareBusy, setShareBusy] = useState(false)
   const [fileClipboard, setFileClipboard] = useState(null)
   const [transferJobs, setTransferJobs] = useState([])
@@ -254,12 +255,15 @@ export function DashboardPage() {
     setFilesDevice(null)
     setSharesDevice(device)
     setShareForm(emptyShareForm)
+    setEditingShare(null)
   }
 
   function closeWorkspace() {
     setTerminalDevice(null)
     setFilesDevice(null)
     setSharesDevice(null)
+    setEditingShare(null)
+    setShareForm(emptyShareForm)
   }
 
   function handleTransferJobCreated(job) {
@@ -287,7 +291,28 @@ export function DashboardPage() {
     }
   }
 
-  async function addShare(event) {
+  function startEditShare(share) {
+    setEditingShare(share)
+    setShareForm({
+      name: share.name,
+      connection_type: share.connection_type,
+      connection_url: share.connection_url,
+      port: share.port,
+      username: share.username ?? "",
+      auth_method: share.auth_method ?? (share.connection_type === "smb" ? "password" : "none"),
+      password: "",
+      active: share.active,
+    })
+    setMessage("Share secrets are not shown after saving. Enter a new password only if you want to replace it.")
+  }
+
+  function cancelShareEdit() {
+    setEditingShare(null)
+    setShareForm(emptyShareForm)
+    setMessage("")
+  }
+
+  async function saveShare(event) {
     event.preventDefault()
     if (!sharesDevice) return
     setShareBusy(true)
@@ -296,14 +321,19 @@ export function DashboardPage() {
       const payload = {
         ...shareForm,
         port: Number(shareForm.port),
-        password: shareForm.auth_method === "password" ? shareForm.password : null,
+        password: shareForm.auth_method === "password" && shareForm.password ? shareForm.password : null,
       }
-      await api.createShare(sharesDevice.id, payload)
+      if (editingShare) {
+        await api.updateShare(editingShare.id, payload)
+      } else {
+        await api.createShare(sharesDevice.id, payload)
+      }
       setShareForm(emptyShareForm)
+      setEditingShare(null)
       await loadDevices()
       const shares = await api.listShares(sharesDevice.id)
       setSharesDevice((current) => current ? { ...current, shares } : current)
-      setMessage("Share added.")
+      setMessage(editingShare ? "Share updated." : "Share added.")
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -388,7 +418,9 @@ export function DashboardPage() {
     )
   }
 
-  function SharesPanel({ device }) {
+  function renderSharesPanel() {
+    const device = sharesDevice
+    if (!device) return null
     const shares = device.shares ?? []
     return (
       <section className="rounded-lg border border-line bg-panel">
@@ -403,7 +435,7 @@ export function DashboardPage() {
           </button>
         </header>
         <div className="space-y-4 p-4">
-          <form className="grid gap-3 rounded-md border border-line bg-surface p-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={addShare}>
+          <form className="grid gap-3 rounded-md border border-line bg-surface p-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={saveShare}>
             <div>
               <label className="label" htmlFor="share-name">Name</label>
               <input className="field mt-1" id="share-name" name="name" value={shareForm.name} onChange={updateShare} required />
@@ -431,12 +463,15 @@ export function DashboardPage() {
                 </div>
                 <div>
                   <label className="label" htmlFor="share-password">Password</label>
-                  <input className="field mt-1" id="share-password" name="password" type="password" value={shareForm.password} onChange={updateShare} required={shareForm.auth_method === "password"} />
+                  <input className="field mt-1" id="share-password" name="password" type="password" value={shareForm.password} onChange={updateShare} required={shareForm.auth_method === "password" && !editingShare} placeholder={editingShare ? "Leave blank to keep current password" : ""} />
                 </div>
               </>
             )}
             <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3">
-              <button className="btn-primary" disabled={shareBusy}>{shareBusy ? "Saving..." : "Add share"}</button>
+              <button className="btn-primary" disabled={shareBusy}>{shareBusy ? "Saving..." : editingShare ? "Save share" : "Add share"}</button>
+              {editingShare && (
+                <button type="button" className="btn-secondary" onClick={cancelShareEdit}>Cancel</button>
+              )}
             </div>
           </form>
 
@@ -450,6 +485,10 @@ export function DashboardPage() {
                 <div className="flex flex-wrap gap-2">
                   <button className="btn-secondary min-h-9 px-3" onClick={() => testShare(share)}>Test</button>
                   <button className="btn-secondary min-h-9 px-3" onClick={() => openShareFiles(share)} disabled={share.connection_type !== "smb"}>Files</button>
+                  <button className="btn-secondary min-h-9 px-3" onClick={() => startEditShare(share)}>
+                    <Pencil size={15} aria-hidden="true" />
+                    Edit
+                  </button>
                   <button className="btn-danger min-h-9 px-3" onClick={() => removeShare(share)}>
                     <Trash2 size={15} aria-hidden="true" />
                   </button>
@@ -620,7 +659,7 @@ export function DashboardPage() {
                 embedded
               />
             ) : sharesDevice ? (
-              <SharesPanel device={sharesDevice} />
+              renderSharesPanel()
             ) : (
               <section className="grid min-h-[620px] place-items-center rounded-lg border border-line bg-panel/60 p-6 text-center">
                 <div>
