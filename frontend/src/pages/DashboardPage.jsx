@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi } from "lucide-react"
+import { Activity, FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi } from "lucide-react"
 
 import { api } from "../api/client"
 import { FileExplorer } from "../components/FileExplorer"
@@ -18,6 +18,21 @@ const emptyForm = {
   active: true,
 }
 
+function formatBytes(size) {
+  if (!size) return "0 B"
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
+  return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`
+}
+
+function jobProgress(job) {
+  if (!job.total_bytes) {
+    return job.status === "completed" ? 100 : 0
+  }
+  return Math.min(100, Math.round((job.transferred_bytes / job.total_bytes) * 100))
+}
+
 export function DashboardPage() {
   const [devices, setDevices] = useState([])
   const [form, setForm] = useState(emptyForm)
@@ -29,14 +44,29 @@ export function DashboardPage() {
   const [terminalDevice, setTerminalDevice] = useState(null)
   const [filesDevice, setFilesDevice] = useState(null)
   const [fileClipboard, setFileClipboard] = useState(null)
+  const [transferJobs, setTransferJobs] = useState([])
 
   async function loadDevices() {
     setDevices(await api.listDevices())
   }
 
+  async function loadTransferJobs() {
+    setTransferJobs(await api.listTransferJobs())
+  }
+
   useEffect(() => {
     loadDevices().catch((err) => setMessage(err.message))
+    loadTransferJobs().catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const hasActiveJob = transferJobs.some((job) => ["pending", "running"].includes(job.status))
+    if (!hasActiveJob) return undefined
+    const timer = window.setInterval(() => {
+      loadTransferJobs().catch(() => {})
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [transferJobs])
 
   const update = (event) => {
     const { name, value, type, checked } = event.target
@@ -172,6 +202,51 @@ export function DashboardPage() {
     setFilesDevice(null)
   }
 
+  function handleTransferJobCreated(job) {
+    setTransferJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 20))
+  }
+
+  function TransferJobsPanel() {
+    if (transferJobs.length === 0) return null
+    return (
+      <section className="rounded-lg border border-line bg-panel p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Activity className="shrink-0 text-teal-300" size={18} aria-hidden="true" />
+            <h3 className="truncate text-sm font-semibold text-ink">Transfers</h3>
+          </div>
+          <button className="btn-secondary min-h-9 px-3" onClick={loadTransferJobs}>Refresh</button>
+        </div>
+        <div className="space-y-3">
+          {transferJobs.slice(0, 5).map((job) => {
+            const progress = jobProgress(job)
+            const verb = job.action === "move" ? "Move" : "Copy"
+            return (
+              <article key={job.id} className="rounded-md border border-line bg-surface p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {verb} {job.source_paths.length} item{job.source_paths.length === 1 ? "" : "s"} from {job.source_device_name} to {job.destination_device_name}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted">
+                      {job.status === "failed" ? job.error : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${job.copied_files || 0}/${job.total_files || 0} files`}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${job.status === "completed" ? "bg-teal-950 text-teal-200" : job.status === "failed" ? "bg-red-950 text-red-100" : "bg-slate-800 text-slate-200"}`}>
+                    {job.status}
+                  </span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className={`h-full rounded-full ${job.status === "failed" ? "bg-red-500" : "bg-teal-400"}`} style={{ width: `${progress}%` }} />
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
+
   function DeviceActions({ device, compact = false }) {
     return (
       <div className={compact ? "grid grid-cols-2 gap-2" : "mt-4 grid grid-cols-2 gap-2"}>
@@ -232,6 +307,8 @@ export function DashboardPage() {
       </section>
 
       {message && <p className="rounded-md border border-line bg-panel px-4 py-3 text-sm text-ink">{message}</p>}
+
+      <TransferJobsPanel />
 
       {showForm && (
         <section className="rounded-lg border border-line bg-panel p-4 sm:p-5">
@@ -337,6 +414,7 @@ export function DashboardPage() {
                 clipboard={fileClipboard}
                 onClipboardSet={setFileClipboard}
                 onClipboardClear={() => setFileClipboard(null)}
+                onJobCreated={handleTransferJobCreated}
                 embedded
               />
             ) : (

@@ -37,4 +37,6 @@ export const api = {
   renamePath: (id, source, destination) => request(`/files/${id}/rename`, { method: "POST", body: JSON.stringify({ source, destination }) }),
   deletePath: (id, path) => request(`/files/${id}/delete`, { method: "POST", body: JSON.stringify({ path }) }),
   transferFiles: (payload) => request("/transfers/files", { method: "POST", body: JSON.stringify(payload) }),
+  createTransferJob: (payload) => request("/transfers/jobs", { method: "POST", body: JSON.stringify(payload) }),
+  listTransferJobs: () => request("/transfers/jobs"),
 }

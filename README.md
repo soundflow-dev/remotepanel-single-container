@@ -21,6 +21,7 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 - SFTP file explorer with multi-select actions
 - SFTP to SFTP copy/move that copies file contents, preserves basic timestamps when possible, and ignores incompatible xattrs/ACLs
 - Initial SMB share support for listing, downloading, creating folders, renaming, deleting, and copying/moving to or from SFTP/SMB
+- Background transfer jobs with basic progress and recent history in the dashboard
 - NFS connection records are accepted as groundwork, but browsing/mounting NFS is not implemented yet
 - Responsive dark UI for desktop, tablet, and phone
 - Transfer policy endpoint documenting the default "Transfers that just work" behavior
@@ -28,7 +29,7 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 ## Planned Next MVP Steps
 
 - Full NFS browsing and transfers
-- Transfer jobs, progress, and logs
+- Transfer logs and cancellation controls
 - 2FA/TOTP
 - Multi-user permissions
 - Plugins

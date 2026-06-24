@@ -16,7 +16,7 @@ function formatSize(size) {
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onClipboardClear, embedded = false }) {
+export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onClipboardClear, onJobCreated, embedded = false }) {
   const [path, setPath] = useState(".")
   const [listing, setListing] = useState({ path: ".", parent: ".", entries: [] })
   const [message, setMessage] = useState("")
@@ -104,7 +104,7 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
     setBusy(true)
     setMessage("")
     try {
-      const result = await api.transferFiles({
+      const result = await api.createTransferJob({
         source_device_id: clipboard.sourceDeviceId,
         destination_device_id: device.id,
         source_paths: clipboard.sourcePaths,
@@ -113,7 +113,10 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
       })
       await load(path)
       onClipboardClear()
-      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} to ${selectedDirectory ? selectedDirectory.name : "this folder"}.`)
+      if (onJobCreated) {
+        onJobCreated(result)
+      }
+      setMessage(`${result.action === "move" ? "Move" : "Copy"} job started for ${result.source_paths.length} item${result.source_paths.length === 1 ? "" : "s"} to ${selectedDirectory ? selectedDirectory.name : "this folder"}.`)
     } catch (err) {
       setMessage(err.message)
     } finally {

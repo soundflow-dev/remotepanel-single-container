@@ -4,7 +4,7 @@ import ntpath
 import posixpath
 import stat
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Callable, Iterator
 
 import smbclient
 
@@ -120,17 +120,34 @@ class TransferStore:
                     break
                 yield chunk
 
-    def write_file(self, path: str, chunks: Iterator[bytes], source_meta: FileMeta) -> None:
+    def total_size(self, path: str) -> tuple[int, int]:
+        safe_path = self.normalize(path)
+        if self.is_dir(safe_path):
+            total_bytes = 0
+            total_files = 0
+            for _, child_path in self.children(safe_path):
+                child_bytes, child_files = self.total_size(child_path)
+                total_bytes += child_bytes
+                total_files += child_files
+            return total_bytes, total_files
+        size = getattr(self.stat(safe_path), "st_size", 0) or 0
+        return int(size), 1
+
+    def write_file(self, path: str, chunks: Iterator[bytes], source_meta: FileMeta, progress: Callable[[int], None] | None = None) -> None:
         safe_path = self.normalize(path)
         self.ensure_dir(posixpath.dirname(safe_path))
         if self.device.connection_type == "smb":
             with smbclient.open_file(smb_unc_path(self.device, safe_path), mode="wb") as destination_file:
                 for chunk in chunks:
                     destination_file.write(chunk)
+                    if progress:
+                        progress(len(chunk))
         else:
             with self.sftp.open(safe_path, "wb") as destination_file:
                 for chunk in chunks:
                     destination_file.write(chunk)
+                    if progress:
+                        progress(len(chunk))
         self.apply_meta(safe_path, source_meta)
 
     def apply_meta(self, path: str, source_meta: FileMeta) -> None:
@@ -164,7 +181,13 @@ class TransferStore:
         remove_tree(self.sftp, safe_path)
 
 
-def copy_tree(source: TransferStore, destination: TransferStore, source_path: str, destination_path: str) -> int:
+def copy_tree(
+    source: TransferStore,
+    destination: TransferStore,
+    source_path: str,
+    destination_path: str,
+    progress: Callable[[int], None] | None = None,
+) -> int:
     source_path = source.normalize(source_path)
     destination_path = destination.normalize(destination_path)
     source_meta = source.meta(source_path)
@@ -172,11 +195,11 @@ def copy_tree(source: TransferStore, destination: TransferStore, source_path: st
         destination.ensure_dir(destination_path)
         copied_files = 0
         for child_name, child_source in source.children(source_path):
-            copied_files += copy_tree(source, destination, child_source, destination.join(destination_path, child_name))
+            copied_files += copy_tree(source, destination, child_source, destination.join(destination_path, child_name), progress)
         destination.apply_meta(destination_path, source_meta)
         return copied_files
 
-    destination.write_file(destination_path, source.read_chunks(source_path), source_meta)
+    destination.write_file(destination_path, source.read_chunks(source_path), source_meta, progress)
     return 1
 
 
@@ -186,6 +209,7 @@ def transfer_file_paths(
     source_paths: list[str],
     destination_path: str,
     action: str,
+    progress: Callable[[int], None] | None = None,
 ) -> dict:
     source = TransferStore(source_device)
     destination = TransferStore(destination_device)
@@ -201,7 +225,7 @@ def transfer_file_paths(
                     raise ValueError("Source and destination are the same path.")
                 if destination_item.startswith(f"{source_path.rstrip('/')}/"):
                     raise ValueError("Destination cannot be inside the selected source folder.")
-            copied_files += copy_tree(source, destination, source_path, destination_item)
+            copied_files += copy_tree(source, destination, source_path, destination_item, progress)
         if action == "move":
             for raw_source_path in source_paths:
                 source.delete_tree(raw_source_path)
@@ -215,3 +239,17 @@ def transfer_file_paths(
     finally:
         source.close()
         destination.close()
+
+
+def measure_transfer_paths(source_device: Device, source_paths: list[str]) -> tuple[int, int]:
+    source = TransferStore(source_device)
+    try:
+        total_bytes = 0
+        total_files = 0
+        for raw_source_path in source_paths:
+            path_bytes, path_files = source.total_size(raw_source_path)
+            total_bytes += path_bytes
+            total_files += path_files
+        return total_bytes, total_files
+    finally:
+        source.close()
