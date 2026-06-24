@@ -77,10 +77,12 @@ class TransferJob(Base):
     transferred_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_files: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     copied_files: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    speed_bytes_per_second: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     result_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_progress_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="transfer_jobs")

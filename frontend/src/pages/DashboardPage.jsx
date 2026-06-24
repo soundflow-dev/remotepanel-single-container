@@ -33,6 +33,16 @@ function jobProgress(job) {
   return Math.min(100, Math.round((job.transferred_bytes / job.total_bytes) * 100))
 }
 
+function formatSpeed(bytesPerSecond) {
+  return `${formatBytes(bytesPerSecond)}/s`
+}
+
+function averageJobSpeed(job) {
+  if (!job.started_at || !job.finished_at || !job.transferred_bytes) return 0
+  const elapsedSeconds = Math.max((new Date(job.finished_at) - new Date(job.started_at)) / 1000, 1)
+  return Math.round(job.transferred_bytes / elapsedSeconds)
+}
+
 export function DashboardPage() {
   const [devices, setDevices] = useState([])
   const [form, setForm] = useState(emptyForm)
@@ -221,6 +231,7 @@ export function DashboardPage() {
           {transferJobs.slice(0, 5).map((job) => {
             const progress = jobProgress(job)
             const verb = job.action === "move" ? "Move" : "Copy"
+            const speed = job.status === "completed" ? averageJobSpeed(job) : job.speed_bytes_per_second
             return (
               <article key={job.id} className="rounded-md border border-line bg-surface p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -229,7 +240,9 @@ export function DashboardPage() {
                       {verb} {job.source_paths.length} item{job.source_paths.length === 1 ? "" : "s"} from {job.source_device_name} to {job.destination_device_name}
                     </p>
                     <p className="mt-1 truncate text-xs text-muted">
-                      {job.status === "failed" ? job.error : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${job.copied_files || 0}/${job.total_files || 0} files`}
+                      {job.status === "failed"
+                        ? job.error
+                        : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${speed ? formatSpeed(speed) : "measuring speed"} · ${job.copied_files || 0}/${job.total_files || 0} files`}
                     </p>
                   </div>
                   <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${job.status === "completed" ? "bg-teal-950 text-teal-200" : job.status === "failed" ? "bg-red-950 text-red-100" : "bg-slate-800 text-slate-200"}`}>

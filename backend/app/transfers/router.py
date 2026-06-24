@@ -40,10 +40,12 @@ class TransferJobResponse(BaseModel):
     transferred_bytes: int
     total_files: int
     copied_files: int
+    speed_bytes_per_second: int
     error: str | None
     result: dict | None
     created_at: datetime | None
     started_at: datetime | None
+    last_progress_at: datetime | None
     finished_at: datetime | None
 
 
@@ -109,10 +111,12 @@ def serialize_job(job: TransferJob) -> TransferJobResponse:
         transferred_bytes=job.transferred_bytes,
         total_files=job.total_files,
         copied_files=job.copied_files,
+        speed_bytes_per_second=job.speed_bytes_per_second,
         error=job.error,
         result=json.loads(job.result_json) if job.result_json else None,
         created_at=job.created_at,
         started_at=job.started_at,
+        last_progress_at=job.last_progress_at,
         finished_at=job.finished_at,
     )
 

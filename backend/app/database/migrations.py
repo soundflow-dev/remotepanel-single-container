@@ -7,10 +7,18 @@ from app.database.session import engine
 
 def run_startup_migrations() -> None:
     inspector = inspect(engine)
-    if "devices" not in inspector.get_table_names():
+    tables = inspector.get_table_names()
+    if "devices" not in tables:
         return
 
-    columns = {column["name"] for column in inspector.get_columns("devices")}
     with engine.begin() as connection:
-        if "connection_url" not in columns:
+        device_columns = {column["name"] for column in inspector.get_columns("devices")}
+        if "connection_url" not in device_columns:
             connection.execute(text("ALTER TABLE devices ADD COLUMN connection_url TEXT"))
+
+        if "transfer_jobs" in tables:
+            transfer_job_columns = {column["name"] for column in inspector.get_columns("transfer_jobs")}
+            if "speed_bytes_per_second" not in transfer_job_columns:
+                connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN speed_bytes_per_second BIGINT NOT NULL DEFAULT 0"))
+            if "last_progress_at" not in transfer_job_columns:
+                connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN last_progress_at DATETIME"))
