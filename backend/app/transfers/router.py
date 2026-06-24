@@ -12,7 +12,7 @@ from app.database.models import TransferJob, User
 from app.database.session import get_db
 from app.devices.service import get_device
 from app.transfers.files import transfer_file_paths
-from app.transfers.jobs import cancel_transfer_job, create_transfer_job, get_transfer_job, list_transfer_jobs, run_transfer_job
+from app.transfers.jobs import cancel_transfer_job, create_transfer_job, dismiss_transfer_job, get_transfer_job, list_transfer_jobs, run_transfer_job
 
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
@@ -47,6 +47,7 @@ class TransferJobResponse(BaseModel):
     started_at: datetime | None
     last_progress_at: datetime | None
     finished_at: datetime | None
+    dismissed_at: datetime | None
 
 
 def current_user(request: Request, db: DbSession = Depends(get_db)) -> User:
@@ -118,6 +119,7 @@ def serialize_job(job: TransferJob) -> TransferJobResponse:
         started_at=job.started_at,
         last_progress_at=job.last_progress_at,
         finished_at=job.finished_at,
+        dismissed_at=job.dismissed_at,
     )
 
 
@@ -171,6 +173,18 @@ def cancel_job(
     user: User = Depends(current_user),
 ):
     job = cancel_transfer_job(db, user, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer job not found.")
+    return serialize_job(job)
+
+
+@router.post("/jobs/{job_id}/dismiss", response_model=TransferJobResponse)
+def dismiss_job(
+    job_id: int,
+    db: DbSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    job = dismiss_transfer_job(db, user, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer job not found.")
     return serialize_job(job)

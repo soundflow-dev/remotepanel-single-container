@@ -40,4 +40,5 @@ export const api = {
   createTransferJob: (payload) => request("/transfers/jobs", { method: "POST", body: JSON.stringify(payload) }),
   listTransferJobs: () => request("/transfers/jobs"),
   cancelTransferJob: (id) => request(`/transfers/jobs/${id}/cancel`, { method: "POST" }),
+  dismissTransferJob: (id) => request(`/transfers/jobs/${id}/dismiss`, { method: "POST" }),
 }

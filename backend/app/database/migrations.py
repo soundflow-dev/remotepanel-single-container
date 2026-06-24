@@ -22,3 +22,5 @@ def run_startup_migrations() -> None:
                 connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN speed_bytes_per_second BIGINT NOT NULL DEFAULT 0"))
             if "last_progress_at" not in transfer_job_columns:
                 connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN last_progress_at DATETIME"))
+            if "dismissed_at" not in transfer_job_columns:
+                connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN dismissed_at DATETIME"))

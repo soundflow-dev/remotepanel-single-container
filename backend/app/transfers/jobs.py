@@ -52,7 +52,7 @@ def create_transfer_job(
 def list_transfer_jobs(db: DbSession, owner: User, limit: int = 20) -> list[TransferJob]:
     return (
         db.query(TransferJob)
-        .filter(TransferJob.owner_id == owner.id)
+        .filter(TransferJob.owner_id == owner.id, TransferJob.dismissed_at.is_(None))
         .order_by(TransferJob.created_at.desc(), TransferJob.id.desc())
         .limit(limit)
         .all()
@@ -72,6 +72,16 @@ def cancel_transfer_job(db: DbSession, owner: User, job_id: int) -> TransferJob 
     job.status = "cancelling"
     job.speed_bytes_per_second = 0
     job.error = "Transfer cancellation requested."
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def dismiss_transfer_job(db: DbSession, owner: User, job_id: int) -> TransferJob | None:
+    job = get_transfer_job(db, owner, job_id)
+    if not job:
+        return None
+    job.dismissed_at = utc_now()
     db.commit()
     db.refresh(job)
     return job

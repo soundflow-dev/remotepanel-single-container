@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Activity, FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi } from "lucide-react"
+import { Activity, FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi, X } from "lucide-react"
 
 import { api } from "../api/client"
 import { FileExplorer } from "../components/FileExplorer"
@@ -229,6 +229,15 @@ export function DashboardPage() {
     }
   }
 
+  async function dismissTransferJob(job) {
+    try {
+      await api.dismissTransferJob(job.id)
+      setTransferJobs((current) => current.filter((item) => item.id !== job.id))
+    } catch (err) {
+      setMessage(err.message)
+    }
+  }
+
   function TransferJobsPanel() {
     if (transferJobs.length === 0) return null
     return (
@@ -268,6 +277,9 @@ export function DashboardPage() {
                         {job.status === "cancelling" || cancellingJobId === job.id ? "Cancelling" : "Cancel"}
                       </button>
                     )}
+                    <button className="btn-secondary min-h-9 px-2" onClick={() => dismissTransferJob(job)} title="Hide transfer">
+                      <X size={15} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
