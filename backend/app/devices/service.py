@@ -22,10 +22,12 @@ def _credential_payload(payload: DeviceCreate | DeviceUpdate) -> dict[str, str]:
 
 
 def create_device(db: DbSession, owner: User, payload: DeviceCreate) -> Device:
-    if payload.connection_type == "smb":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMB is reserved for the next milestone.")
     credentials = _credential_payload(payload)
-    if payload.auth_method == "password" and not credentials.get("password"):
+    if payload.connection_type == "ssh_sftp" and not payload.username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is required for SSH/SFTP.")
+    if payload.connection_type == "ssh_sftp" and payload.auth_method == "none":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSH/SFTP requires password or SSH key authentication.")
+    if payload.auth_method == "password" and payload.connection_type != "nfs" and not credentials.get("password"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is required.")
     if payload.auth_method == "ssh_key" and not credentials.get("private_key"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Private key is required.")
@@ -92,6 +94,8 @@ def connect_ssh_device(device: Device) -> paramiko.SSHClient:
         raise ValueError("Device is inactive.")
     if device.connection_type != "ssh_sftp":
         raise ValueError("Only SSH/SFTP devices can open an SSH terminal.")
+    if device.auth_method == "none":
+        raise ValueError("SSH/SFTP requires password or SSH key authentication.")
     credentials = decrypt_json(device.credentials_encrypted)
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -114,10 +118,12 @@ def connect_ssh_device(device: Device) -> paramiko.SSHClient:
 
 
 def test_ssh_device(device: Device) -> tuple[bool, str]:
+    client = None
     try:
         client = connect_ssh_device(device)
         return True, "SSH connection successful."
     except (paramiko.SSHException, socket.error, ValueError) as exc:
         return False, f"SSH connection failed: {exc}"
     finally:
-        client.close()
+        if client:
+            client.close()

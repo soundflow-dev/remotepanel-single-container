@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi } from "lucide-react"
 
 import { api } from "../api/client"
+import { FileExplorer } from "../components/FileExplorer"
 import { SshTerminal } from "../components/SshTerminal"
 
 const emptyForm = {
@@ -25,6 +26,7 @@ export function DashboardPage() {
   const [busy, setBusy] = useState(false)
   const [testingId, setTestingId] = useState(null)
   const [terminalDevice, setTerminalDevice] = useState(null)
+  const [filesDevice, setFilesDevice] = useState(null)
 
   async function loadDevices() {
     setDevices(await api.listDevices())
@@ -36,6 +38,16 @@ export function DashboardPage() {
 
   const update = (event) => {
     const { name, value, type, checked } = event.target
+    if (name === "connection_type") {
+      if (value === "ssh_sftp") {
+        setForm({ ...form, connection_type: value, port: 22, auth_method: "password" })
+      } else if (value === "smb") {
+        setForm({ ...form, connection_type: value, port: 445, auth_method: "password" })
+      } else {
+        setForm({ ...form, connection_type: value, port: 2049, username: "", auth_method: "none", password: "", private_key: "" })
+      }
+      return
+    }
     setForm({ ...form, [name]: type === "checkbox" ? checked : value })
   }
 
@@ -138,6 +150,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       {terminalDevice && <SshTerminal device={terminalDevice} onClose={() => setTerminalDevice(null)} />}
+      {filesDevice && <FileExplorer device={filesDevice} onClose={() => setFilesDevice(null)} />}
 
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -164,7 +177,8 @@ export function DashboardPage() {
               <label className="label" htmlFor="connection_type">Connection type</label>
               <select className="field mt-1" id="connection_type" name="connection_type" value={form.connection_type} onChange={update} disabled={Boolean(editingDevice)}>
                 <option value="ssh_sftp">SSH/SFTP</option>
-                <option value="smb" disabled>SMB soon</option>
+                <option value="smb">SMB</option>
+                <option value="nfs">NFS</option>
               </select>
             </div>
             <div>
@@ -177,16 +191,22 @@ export function DashboardPage() {
             </div>
             <div>
               <label className="label" htmlFor="username">User</label>
-              <input className="field mt-1" id="username" name="username" value={form.username} onChange={update} required />
+              <input className="field mt-1" id="username" name="username" value={form.username} onChange={update} required={form.connection_type !== "nfs"} />
             </div>
             <div>
               <label className="label" htmlFor="auth_method">Auth method</label>
               <select className="field mt-1" id="auth_method" name="auth_method" value={form.auth_method} onChange={update}>
-                <option value="password">Password</option>
-                <option value="ssh_key">SSH key</option>
+                {form.connection_type === "nfs" ? (
+                  <option value="none">None</option>
+                ) : (
+                  <>
+                    <option value="password">Password</option>
+                    {form.connection_type === "ssh_sftp" && <option value="ssh_key">SSH key</option>}
+                  </>
+                )}
               </select>
             </div>
-            {form.auth_method === "password" ? (
+            {form.auth_method === "none" ? null : form.auth_method === "password" ? (
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="label" htmlFor="password">Password</label>
                 <input className="field mt-1" id="password" name="password" type="password" value={form.password} onChange={update} autoComplete="new-password" required={!editingDevice} placeholder={editingDevice ? "Leave blank to keep current password" : ""} />
@@ -224,7 +244,7 @@ export function DashboardPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold text-ink">{device.name}</h3>
-                  <p className="truncate text-sm text-muted">{device.username}@{device.host}:{device.port}</p>
+                  <p className="truncate text-sm text-muted">{device.username ? `${device.username}@` : ""}{device.host}:{device.port}</p>
                 </div>
                 <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${device.active ? "bg-teal-950 text-teal-200" : "bg-slate-800 text-slate-300"}`}>
                   <Power size={13} aria-hidden="true" />
@@ -240,9 +260,9 @@ export function DashboardPage() {
                   <Terminal size={17} aria-hidden="true" />
                   Terminal
                 </button>
-                <button className="btn-secondary px-3" disabled title="File explorer coming soon">
+                <button className="btn-secondary px-3" onClick={() => setFilesDevice(device)} disabled={device.connection_type !== "ssh_sftp"} title={device.connection_type === "ssh_sftp" ? "Open file explorer" : "SMB/NFS file explorer coming next"}>
                   <FolderOpen size={17} aria-hidden="true" />
-                  Files soon
+                  Files
                 </button>
                 <button className="btn-secondary px-3" onClick={() => startEdit(device)}>
                   <Pencil size={17} aria-hidden="true" />

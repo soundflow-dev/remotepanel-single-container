@@ -32,4 +32,8 @@ export const api = {
   updateDevice: (id, payload) => request(`/devices/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteDevice: (id) => request(`/devices/${id}`, { method: "DELETE" }),
   testDevice: (id) => request(`/devices/${id}/test`, { method: "POST" }),
+  listFiles: (id, path = ".") => request(`/files/${id}/list?path=${encodeURIComponent(path)}`),
+  mkdir: (id, path) => request(`/files/${id}/mkdir`, { method: "POST", body: JSON.stringify({ path }) }),
+  renamePath: (id, source, destination) => request(`/files/${id}/rename`, { method: "POST", body: JSON.stringify({ source, destination }) }),
+  deletePath: (id, path) => request(`/files/${id}/delete`, { method: "POST", body: JSON.stringify({ path }) }),
 }
