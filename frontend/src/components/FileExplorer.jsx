@@ -22,6 +22,10 @@ export function FileExplorer({ device, onClose }) {
   const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState([])
+  const [transferAction, setTransferAction] = useState(null)
+  const [destinationDeviceId, setDestinationDeviceId] = useState(device.id)
+  const [destinationPath, setDestinationPath] = useState(".")
+  const [sftpDevices, setSftpDevices] = useState([device])
 
   async function load(nextPath = path) {
     setBusy(true)
@@ -40,6 +44,12 @@ export function FileExplorer({ device, onClose }) {
 
   useEffect(() => {
     load(".")
+    api.listDevices()
+      .then((devices) => {
+        const available = devices.filter((item) => item.connection_type === "ssh_sftp" && item.active)
+        setSftpDevices(available.length > 0 ? available : [device])
+      })
+      .catch(() => setSftpDevices([device]))
   }, [device])
 
   async function createFolder() {
@@ -82,6 +92,36 @@ export function FileExplorer({ device, onClose }) {
 
   function downloadEntry(entry) {
     window.location.href = `/api/files/${device.id}/download?path=${encodeURIComponent(entry.path)}`
+  }
+
+  function openTransfer(action) {
+    setTransferAction(action)
+    setDestinationDeviceId(device.id)
+    setDestinationPath(path)
+    setMessage("")
+  }
+
+  async function runTransfer(event) {
+    event.preventDefault()
+    if (!transferAction || selectedPaths.length === 0) return
+    setBusy(true)
+    setMessage("")
+    try {
+      const result = await api.transferSftp({
+        source_device_id: device.id,
+        destination_device_id: Number(destinationDeviceId),
+        source_paths: selectedPaths,
+        destination_path: destinationPath || ".",
+        action: transferAction,
+      })
+      setTransferAction(null)
+      await load(path)
+      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} (${result.files_copied} file${result.files_copied === 1 ? "" : "s"}).`)
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   function toggleSelection(entry) {
@@ -134,11 +174,11 @@ export function FileExplorer({ device, onClose }) {
           <div className="mb-3 flex flex-col gap-3 rounded-md border border-line bg-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ink">{selectedCount} selected</p>
             <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary min-h-9 px-3" disabled title="Copy selected coming soon">
+              <button className="btn-secondary min-h-9 px-3" onClick={() => openTransfer("copy")} disabled={busy}>
                 <Copy size={15} aria-hidden="true" />
                 Copy
               </button>
-              <button className="btn-secondary min-h-9 px-3" disabled title="Move selected coming soon">
+              <button className="btn-secondary min-h-9 px-3" onClick={() => openTransfer("move")} disabled={busy}>
                 <MoveRight size={15} aria-hidden="true" />
                 Move
               </button>
@@ -151,6 +191,29 @@ export function FileExplorer({ device, onClose }) {
               </button>
             </div>
           </div>
+        )}
+
+        {transferAction && (
+          <form className="mb-3 rounded-md border border-line bg-panel px-4 py-3" onSubmit={runTransfer}>
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <div>
+                <label className="label" htmlFor="destination_device">Destination</label>
+                <select className="field mt-1" id="destination_device" value={destinationDeviceId} onChange={(event) => setDestinationDeviceId(event.target.value)}>
+                  {sftpDevices.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name} · {item.host}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="destination_path">Destination folder</label>
+                <input className="field mt-1" id="destination_path" value={destinationPath} onChange={(event) => setDestinationPath(event.target.value)} placeholder="." />
+              </div>
+              <div className="flex gap-2">
+                <button className="btn-primary min-h-11" disabled={busy}>{transferAction === "move" ? "Move" : "Copy"}</button>
+                <button className="btn-secondary min-h-11" type="button" onClick={() => setTransferAction(null)}>Cancel</button>
+              </div>
+            </div>
+          </form>
         )}
 
         <div className="overflow-hidden rounded-lg border border-line bg-panel">
