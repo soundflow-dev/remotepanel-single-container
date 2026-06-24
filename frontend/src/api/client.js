@@ -36,5 +36,5 @@ export const api = {
   mkdir: (id, path) => request(`/files/${id}/mkdir`, { method: "POST", body: JSON.stringify({ path }) }),
   renamePath: (id, source, destination) => request(`/files/${id}/rename`, { method: "POST", body: JSON.stringify({ source, destination }) }),
   deletePath: (id, path) => request(`/files/${id}/delete`, { method: "POST", body: JSON.stringify({ path }) }),
-  transferSftp: (payload) => request("/transfers/sftp", { method: "POST", body: JSON.stringify(payload) }),
+  transferFiles: (payload) => request("/transfers/files", { method: "POST", body: JSON.stringify(payload) }),
 }

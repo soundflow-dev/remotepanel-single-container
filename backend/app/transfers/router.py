@@ -8,13 +8,13 @@ from app.auth.service import get_current_user
 from app.database.models import User
 from app.database.session import get_db
 from app.devices.service import get_device
-from app.transfers.sftp import transfer_sftp_paths
+from app.transfers.files import transfer_file_paths
 
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
 
-class SftpTransferRequest(BaseModel):
+class FileTransferRequest(BaseModel):
     source_device_id: int
     destination_device_id: int
     source_paths: list[str] = Field(min_length=1, max_length=200)
@@ -42,14 +42,23 @@ def transfer_policy():
 
 @router.post("/sftp")
 def transfer_sftp(
-    payload: SftpTransferRequest,
+    payload: FileTransferRequest,
+    db: DbSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    return transfer_files(payload, db, user)
+
+
+@router.post("/files")
+def transfer_files(
+    payload: FileTransferRequest,
     db: DbSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
     source_device = get_device(db, user, payload.source_device_id)
     destination_device = get_device(db, user, payload.destination_device_id)
     try:
-        return transfer_sftp_paths(
+        return transfer_file_paths(
             source_device=source_device,
             destination_device=destination_device,
             source_paths=payload.source_paths,

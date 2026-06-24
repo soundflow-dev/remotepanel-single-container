@@ -46,6 +46,7 @@ class Device(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     connection_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    connection_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     host: Mapped[str] = mapped_column(String(255), nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False)
     username: Mapped[str] = mapped_column(String(120), nullable=False)

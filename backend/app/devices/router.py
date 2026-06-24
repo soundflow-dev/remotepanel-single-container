@@ -7,7 +7,7 @@ from app.auth.service import get_current_user
 from app.database.models import User
 from app.database.session import get_db
 from app.devices.schemas import DeviceCreate, DeviceResponse, DeviceTestResponse, DeviceUpdate
-from app.devices.service import create_device, delete_device, get_device, list_devices, test_ssh_device, update_device
+from app.devices.service import create_device, delete_device, get_device, list_devices, test_device_connection, update_device
 
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -41,5 +41,5 @@ def remove_device(device_id: int, db: DbSession = Depends(get_db), user: User = 
 @router.post("/{device_id}/test", response_model=DeviceTestResponse)
 def test_device(device_id: int, db: DbSession = Depends(get_db), user: User = Depends(current_user)):
     device = get_device(db, user, device_id)
-    ok, message = test_ssh_device(device)
+    ok, message = test_device_connection(device)
     return DeviceTestResponse(ok=ok, status=message)

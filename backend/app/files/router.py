@@ -9,6 +9,7 @@ from app.auth.service import get_current_user
 from app.database.models import User
 from app.database.session import get_db
 from app.devices.service import get_device
+from app.files.smb import delete_smb_path, list_smb_directory, make_smb_directory, read_smb_file, rename_smb_path
 from app.files.sftp import delete_sftp_path, list_sftp_directory, make_sftp_directory, read_sftp_file, rename_sftp_path
 
 
@@ -32,7 +33,7 @@ def current_user(request: Request, db: DbSession = Depends(get_db)) -> User:
 def capabilities():
     return {
         "sftp": ["list", "download", "upload"],
-        "smb": ["planned"],
+        "smb": ["list", "download", "mkdir", "rename", "delete"],
         "nfs": ["planned"],
         "transfers": "MVP transfer endpoints will copy file contents and ignore incompatible xattrs/ACLs by design.",
     }
@@ -46,6 +47,8 @@ def list_files(
     user: User = Depends(current_user),
 ):
     device = get_device(db, user, device_id)
+    if device.connection_type == "smb":
+        return list_smb_directory(device, path)
     return list_sftp_directory(device, path)
 
 
@@ -57,6 +60,9 @@ def make_directory(
     user: User = Depends(current_user),
 ):
     device = get_device(db, user, device_id)
+    if device.connection_type == "smb":
+        make_smb_directory(device, payload.path)
+        return {"ok": True}
     make_sftp_directory(device, payload.path)
     return {"ok": True}
 
@@ -69,6 +75,9 @@ def rename_path(
     user: User = Depends(current_user),
 ):
     device = get_device(db, user, device_id)
+    if device.connection_type == "smb":
+        rename_smb_path(device, payload.source, payload.destination)
+        return {"ok": True}
     rename_sftp_path(device, payload.source, payload.destination)
     return {"ok": True}
 
@@ -81,6 +90,9 @@ def delete_path(
     user: User = Depends(current_user),
 ):
     device = get_device(db, user, device_id)
+    if device.connection_type == "smb":
+        delete_smb_path(device, payload.path)
+        return {"ok": True}
     delete_sftp_path(device, payload.path)
     return {"ok": True}
 
@@ -93,7 +105,13 @@ def download_file(
     user: User = Depends(current_user),
 ):
     device = get_device(db, user, device_id)
-    filename, content = read_sftp_file(device, path)
+    if device.connection_type == "smb":
+        filename, raw_content = read_smb_file(device, path)
+        import io
+
+        content = io.BytesIO(raw_content)
+    else:
+        filename, content = read_sftp_file(device, path)
     return StreamingResponse(
         content,
         media_type="application/octet-stream",

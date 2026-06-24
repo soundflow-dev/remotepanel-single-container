@@ -8,6 +8,7 @@ import { SshTerminal } from "../components/SshTerminal"
 const emptyForm = {
   name: "",
   connection_type: "ssh_sftp",
+  connection_url: "",
   host: "",
   port: 22,
   username: "",
@@ -41,11 +42,11 @@ export function DashboardPage() {
     const { name, value, type, checked } = event.target
     if (name === "connection_type") {
       if (value === "ssh_sftp") {
-        setForm({ ...form, connection_type: value, port: 22, auth_method: "password" })
+        setForm({ ...form, connection_type: value, connection_url: "", port: 22, auth_method: "password" })
       } else if (value === "smb") {
-        setForm({ ...form, connection_type: value, port: 445, auth_method: "password" })
+        setForm({ ...form, connection_type: value, connection_url: "", host: "", port: 445, auth_method: "password" })
       } else {
-        setForm({ ...form, connection_type: value, port: 2049, username: "", auth_method: "none", password: "", private_key: "" })
+        setForm({ ...form, connection_type: value, connection_url: "", host: "", port: 2049, username: "", auth_method: "none", password: "", private_key: "" })
       }
       return
     }
@@ -64,6 +65,7 @@ export function DashboardPage() {
     setForm({
       name: device.name,
       connection_type: device.connection_type,
+      connection_url: device.connection_url ?? "",
       host: device.host,
       port: device.port,
       username: device.username,
@@ -95,6 +97,7 @@ export function DashboardPage() {
         const payload = {
           name: basePayload.name,
           host: basePayload.host,
+          connection_url: basePayload.connection_url,
           port: basePayload.port,
           username: basePayload.username,
           auth_method: basePayload.auth_method,
@@ -180,7 +183,7 @@ export function DashboardPage() {
           <Terminal size={17} aria-hidden="true" />
           Terminal
         </button>
-        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={device.connection_type !== "ssh_sftp"} title={device.connection_type === "ssh_sftp" ? "Open file explorer" : "SMB/NFS file explorer coming next"}>
+        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={!["ssh_sftp", "smb"].includes(device.connection_type)} title={["ssh_sftp", "smb"].includes(device.connection_type) ? "Open file explorer" : "NFS file explorer coming next"}>
           <FolderOpen size={17} aria-hidden="true" />
           Files
         </button>
@@ -203,7 +206,7 @@ export function DashboardPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-ink">{device.name}</h3>
-            <p className="truncate text-xs text-muted">{device.username ? `${device.username}@` : ""}{device.host}:{device.port}</p>
+            <p className="truncate text-xs text-muted">{device.connection_url || `${device.username ? `${device.username}@` : ""}${device.host}:${device.port}`}</p>
           </div>
           <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${device.active ? "bg-teal-950 text-teal-200" : "bg-slate-800 text-slate-300"}`}>
             <Power size={13} aria-hidden="true" />
@@ -220,7 +223,7 @@ export function DashboardPage() {
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Devices</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">Add SSH/SFTP connections and test them from one self-hosted control panel.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">Add SSH/SFTP and SMB connections and test them from one self-hosted control panel.</p>
         </div>
         <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
           <Plus size={18} aria-hidden="true" />
@@ -247,8 +250,22 @@ export function DashboardPage() {
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="host">Host/IP</label>
-              <input className="field mt-1" id="host" name="host" value={form.host} onChange={update} required />
+              <label className="label" htmlFor={form.connection_type === "ssh_sftp" ? "host" : "connection_url"}>
+                {form.connection_type === "ssh_sftp" ? "Host/IP" : "Share path"}
+              </label>
+              {form.connection_type === "ssh_sftp" ? (
+                <input className="field mt-1" id="host" name="host" value={form.host} onChange={update} required />
+              ) : (
+                <input
+                  className="field mt-1"
+                  id="connection_url"
+                  name="connection_url"
+                  value={form.connection_url}
+                  onChange={update}
+                  placeholder={form.connection_type === "smb" ? "\\\\10.10.20.8\\Share or smb://10.10.20.8/Share" : "10.10.20.8:/export or nfs://10.10.20.8/export"}
+                  required
+                />
+              )}
             </div>
             <div>
               <label className="label" htmlFor="port">Port</label>
@@ -299,7 +316,7 @@ export function DashboardPage() {
           <div>
             <Server className="mx-auto mb-3 text-muted" size={40} aria-hidden="true" />
             <h3 className="text-lg font-semibold text-ink">No machines configured</h3>
-            <p className="mt-1 text-sm text-muted">First launch starts empty. Add your first SSH/SFTP connection when ready.</p>
+            <p className="mt-1 text-sm text-muted">First launch starts empty. Add your first SSH/SFTP or SMB connection when ready.</p>
           </div>
         </section>
       ) : (

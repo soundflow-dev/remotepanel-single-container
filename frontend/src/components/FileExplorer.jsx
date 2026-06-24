@@ -104,7 +104,7 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
     setBusy(true)
     setMessage("")
     try {
-      const result = await api.transferSftp({
+      const result = await api.transferFiles({
         source_device_id: clipboard.sourceDeviceId,
         destination_device_id: device.id,
         source_paths: clipboard.sourcePaths,

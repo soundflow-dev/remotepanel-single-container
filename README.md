@@ -16,16 +16,18 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 - Login, logout, and current-user endpoint
 - Login rate limit with temporary user lockout
 - Device credentials encrypted in SQLite using `APP_SECRET_KEY`
-- Add, list, delete, and test SSH/SFTP devices
+- Add, list, edit, delete, and test SSH/SFTP devices
+- Web SSH terminal over backend WebSocket
+- SFTP file explorer with multi-select actions
+- SFTP to SFTP copy/move that copies file contents, preserves basic timestamps when possible, and ignores incompatible xattrs/ACLs
+- Initial SMB share support for listing, downloading, creating folders, renaming, deleting, and copying/moving to or from SFTP/SMB
+- NFS connection records are accepted as groundwork, but browsing/mounting NFS is not implemented yet
 - Responsive dark UI for desktop, tablet, and phone
 - Transfer policy endpoint documenting the default "Transfers that just work" behavior
 
 ## Planned Next MVP Steps
 
-- Web SSH terminal over backend WebSocket
-- SFTP file explorer
-- SFTP to SFTP copy/move that copies file contents, preserves basic timestamps when possible, and ignores incompatible xattrs/ACLs
-- SMB device support
+- Full NFS browsing and transfers
 - Transfer jobs, progress, and logs
 - 2FA/TOTP
 - Multi-user permissions
@@ -57,6 +59,26 @@ http://localhost:8080
 ```
 
 On first launch, create the administrator account. The setup route is locked after the first user exists.
+
+## Adding Shares
+
+SSH/SFTP devices use a host/IP, port, user, and password or private key.
+
+SMB devices use a share path. Use the full share path when possible:
+
+```text
+smb://10.10.20.8/Media
+\\10.10.20.8\Media
+```
+
+If the device has multiple shares, add each share as a separate connection for now. The stored SMB password is encrypted and is never sent back to the frontend after saving.
+
+NFS paths can be saved in either form below, but NFS browsing is still planned:
+
+```text
+10.10.20.8:/mnt/pool/share
+nfs://10.10.20.8/mnt/pool/share
+```
 
 ## Ubuntu Server Install
 

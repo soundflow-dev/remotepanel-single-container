@@ -8,7 +8,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DbSession
 
 from app.database.models import Device, User
+from app.devices.paths import parse_connection_path
 from app.devices.schemas import DeviceCreate, DeviceUpdate
+from app.files.smb import list_smb_directory
 from app.security.crypto import decrypt_json, encrypt_json
 
 
@@ -23,6 +25,9 @@ def _credential_payload(payload: DeviceCreate | DeviceUpdate) -> dict[str, str]:
 
 def create_device(db: DbSession, owner: User, payload: DeviceCreate) -> Device:
     credentials = _credential_payload(payload)
+    if payload.connection_type in ("smb", "nfs") and not (payload.connection_url or payload.host):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Share path is required.")
+    parsed_path = parse_connection_path(payload.connection_type, payload.connection_url, payload.host, payload.port)
     if payload.connection_type == "ssh_sftp" and not payload.username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is required for SSH/SFTP.")
     if payload.connection_type == "ssh_sftp" and payload.auth_method == "none":
@@ -35,8 +40,9 @@ def create_device(db: DbSession, owner: User, payload: DeviceCreate) -> Device:
         owner_id=owner.id,
         name=payload.name,
         connection_type=payload.connection_type,
-        host=payload.host,
-        port=payload.port,
+        connection_url=parsed_path.normalized_url,
+        host=parsed_path.host,
+        port=parsed_path.port,
         username=payload.username,
         auth_method=payload.auth_method,
         credentials_encrypted=encrypt_json(credentials),
@@ -65,6 +71,11 @@ def update_device(db: DbSession, owner: User, device_id: int, payload: DeviceUpd
         value = getattr(payload, field)
         if value is not None:
             setattr(device, field, value)
+    if payload.connection_url is not None:
+        parsed_path = parse_connection_path(device.connection_type, payload.connection_url, device.host, device.port)
+        device.connection_url = parsed_path.normalized_url
+        device.host = parsed_path.host
+        device.port = parsed_path.port
     credentials = decrypt_json(device.credentials_encrypted)
     credentials.update(_credential_payload(payload))
     device.credentials_encrypted = encrypt_json(credentials)
@@ -127,3 +138,19 @@ def test_ssh_device(device: Device) -> tuple[bool, str]:
     finally:
         if client:
             client.close()
+
+
+def test_smb_device(device: Device) -> tuple[bool, str]:
+    try:
+        list_smb_directory(device, ".")
+        return True, "SMB share connection successful."
+    except Exception as exc:
+        return False, f"SMB share connection failed: {exc}"
+
+
+def test_device_connection(device: Device) -> tuple[bool, str]:
+    if device.connection_type == "ssh_sftp":
+        return test_ssh_device(device)
+    if device.connection_type == "smb":
+        return test_smb_device(device)
+    return False, "NFS connections are saved, but NFS browsing/testing is not implemented yet."
