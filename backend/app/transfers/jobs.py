@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.database.models import Device, TransferJob, User
 from app.database.session import SessionLocal
-from app.transfers.files import measure_transfer_paths, transfer_file_paths
+from app.transfers.files import TransferCancelled, measure_transfer_paths, transfer_file_paths
 
 
-TERMINAL_STATUSES = {"completed", "failed"}
+TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
 def create_transfer_job(
@@ -53,6 +53,20 @@ def get_transfer_job(db: DbSession, owner: User, job_id: int) -> TransferJob | N
     return db.query(TransferJob).filter(TransferJob.id == job_id, TransferJob.owner_id == owner.id).first()
 
 
+def cancel_transfer_job(db: DbSession, owner: User, job_id: int) -> TransferJob | None:
+    job = get_transfer_job(db, owner, job_id)
+    if not job:
+        return None
+    if job.status in TERMINAL_STATUSES:
+        return job
+    job.status = "cancelling"
+    job.speed_bytes_per_second = 0
+    job.error = "Transfer cancellation requested."
+    db.commit()
+    db.refresh(job)
+    return job
+
+
 def run_transfer_job(job_id: int) -> None:
     db = SessionLocal()
     transferred_since_commit = 0
@@ -61,6 +75,12 @@ def run_transfer_job(job_id: int) -> None:
     try:
         job = db.query(TransferJob).filter(TransferJob.id == job_id).first()
         if not job:
+            return
+        if job.status == "cancelling":
+            job.status = "cancelled"
+            job.error = "Transfer cancelled."
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
             return
 
         source_device = db.query(Device).filter(Device.id == job.source_device_id, Device.owner_id == job.owner_id).first()
@@ -79,6 +99,9 @@ def run_transfer_job(job_id: int) -> None:
         db.commit()
 
         total_bytes, total_files = measure_transfer_paths(source_device, source_paths)
+        status_value = db.query(TransferJob.status).filter(TransferJob.id == job_id).scalar()
+        if status_value == "cancelling":
+            raise TransferCancelled("Transfer cancelled.")
         job.total_bytes = total_bytes
         job.total_files = total_files
         db.commit()
@@ -101,6 +124,10 @@ def run_transfer_job(job_id: int) -> None:
                 transferred_since_commit = 0
                 db.commit()
 
+        def should_cancel() -> bool:
+            status_value = db.query(TransferJob.status).filter(TransferJob.id == job_id).scalar()
+            return status_value == "cancelling"
+
         result = transfer_file_paths(
             source_device=source_device,
             destination_device=destination_device,
@@ -108,6 +135,7 @@ def run_transfer_job(job_id: int) -> None:
             destination_path=job.destination_path,
             action=job.action,
             progress=progress,
+            should_cancel=should_cancel,
         )
         job.transferred_bytes = max(job.transferred_bytes, job.total_bytes)
         job.speed_bytes_per_second = 0
@@ -116,6 +144,14 @@ def run_transfer_job(job_id: int) -> None:
         job.status = "completed"
         job.finished_at = datetime.now(timezone.utc)
         db.commit()
+    except TransferCancelled as exc:
+        job = db.query(TransferJob).filter(TransferJob.id == job_id).first()
+        if job:
+            job.status = "cancelled"
+            job.speed_bytes_per_second = 0
+            job.error = str(exc)
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
     except Exception as exc:
         job = db.query(TransferJob).filter(TransferJob.id == job_id).first()
         if job:

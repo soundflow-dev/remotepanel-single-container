@@ -55,6 +55,7 @@ export function DashboardPage() {
   const [filesDevice, setFilesDevice] = useState(null)
   const [fileClipboard, setFileClipboard] = useState(null)
   const [transferJobs, setTransferJobs] = useState([])
+  const [cancellingJobId, setCancellingJobId] = useState(null)
 
   async function loadDevices() {
     setDevices(await api.listDevices())
@@ -70,7 +71,7 @@ export function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    const hasActiveJob = transferJobs.some((job) => ["pending", "running"].includes(job.status))
+    const hasActiveJob = transferJobs.some((job) => ["pending", "running", "cancelling"].includes(job.status))
     if (!hasActiveJob) return undefined
     const timer = window.setInterval(() => {
       loadTransferJobs().catch(() => {})
@@ -216,6 +217,18 @@ export function DashboardPage() {
     setTransferJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 20))
   }
 
+  async function cancelTransferJob(job) {
+    setCancellingJobId(job.id)
+    try {
+      const updated = await api.cancelTransferJob(job.id)
+      setTransferJobs((current) => current.map((item) => item.id === updated.id ? updated : item))
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setCancellingJobId(null)
+    }
+  }
+
   function TransferJobsPanel() {
     if (transferJobs.length === 0) return null
     return (
@@ -232,6 +245,7 @@ export function DashboardPage() {
             const progress = jobProgress(job)
             const verb = job.action === "move" ? "Move" : "Copy"
             const speed = job.status === "completed" ? averageJobSpeed(job) : job.speed_bytes_per_second
+            const canCancel = ["pending", "running", "cancelling"].includes(job.status)
             return (
               <article key={job.id} className="rounded-md border border-line bg-surface p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -240,17 +254,24 @@ export function DashboardPage() {
                       {verb} {job.source_paths.length} item{job.source_paths.length === 1 ? "" : "s"} from {job.source_device_name} to {job.destination_device_name}
                     </p>
                     <p className="mt-1 truncate text-xs text-muted">
-                      {job.status === "failed"
+                      {job.status === "failed" || job.status === "cancelled"
                         ? job.error
                         : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${speed ? formatSpeed(speed) : "measuring speed"} · ${job.copied_files || 0}/${job.total_files || 0} files`}
                     </p>
                   </div>
-                  <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${job.status === "completed" ? "bg-teal-950 text-teal-200" : job.status === "failed" ? "bg-red-950 text-red-100" : "bg-slate-800 text-slate-200"}`}>
-                    {job.status}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${job.status === "completed" ? "bg-teal-950 text-teal-200" : job.status === "failed" || job.status === "cancelled" ? "bg-red-950 text-red-100" : "bg-slate-800 text-slate-200"}`}>
+                      {job.status}
+                    </span>
+                    {canCancel && (
+                      <button className="btn-danger min-h-9 px-3 text-xs" onClick={() => cancelTransferJob(job)} disabled={cancellingJobId === job.id || job.status === "cancelling"}>
+                        {job.status === "cancelling" || cancellingJobId === job.id ? "Cancelling" : "Cancel"}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
-                  <div className={`h-full rounded-full ${job.status === "failed" ? "bg-red-500" : "bg-teal-400"}`} style={{ width: `${progress}%` }} />
+                  <div className={`h-full rounded-full ${job.status === "failed" || job.status === "cancelled" ? "bg-red-500" : job.status === "cancelling" ? "bg-amber-400" : "bg-teal-400"}`} style={{ width: `${progress}%` }} />
                 </div>
               </article>
             )

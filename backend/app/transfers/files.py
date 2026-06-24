@@ -22,6 +22,10 @@ class FileMeta:
     mtime: float | None = None
 
 
+class TransferCancelled(Exception):
+    pass
+
+
 class TransferStore:
     def __init__(self, device: Device):
         self.device = device
@@ -133,18 +137,29 @@ class TransferStore:
         size = getattr(self.stat(safe_path), "st_size", 0) or 0
         return int(size), 1
 
-    def write_file(self, path: str, chunks: Iterator[bytes], source_meta: FileMeta, progress: Callable[[int], None] | None = None) -> None:
+    def write_file(
+        self,
+        path: str,
+        chunks: Iterator[bytes],
+        source_meta: FileMeta,
+        progress: Callable[[int], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> None:
         safe_path = self.normalize(path)
         self.ensure_dir(posixpath.dirname(safe_path))
         if self.device.connection_type == "smb":
             with smbclient.open_file(smb_unc_path(self.device, safe_path), mode="wb") as destination_file:
                 for chunk in chunks:
+                    if should_cancel and should_cancel():
+                        raise TransferCancelled("Transfer cancelled.")
                     destination_file.write(chunk)
                     if progress:
                         progress(len(chunk))
         else:
             with self.sftp.open(safe_path, "wb") as destination_file:
                 for chunk in chunks:
+                    if should_cancel and should_cancel():
+                        raise TransferCancelled("Transfer cancelled.")
                     destination_file.write(chunk)
                     if progress:
                         progress(len(chunk))
@@ -187,7 +202,10 @@ def copy_tree(
     source_path: str,
     destination_path: str,
     progress: Callable[[int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> int:
+    if should_cancel and should_cancel():
+        raise TransferCancelled("Transfer cancelled.")
     source_path = source.normalize(source_path)
     destination_path = destination.normalize(destination_path)
     source_meta = source.meta(source_path)
@@ -195,11 +213,11 @@ def copy_tree(
         destination.ensure_dir(destination_path)
         copied_files = 0
         for child_name, child_source in source.children(source_path):
-            copied_files += copy_tree(source, destination, child_source, destination.join(destination_path, child_name), progress)
+            copied_files += copy_tree(source, destination, child_source, destination.join(destination_path, child_name), progress, should_cancel)
         destination.apply_meta(destination_path, source_meta)
         return copied_files
 
-    destination.write_file(destination_path, source.read_chunks(source_path), source_meta, progress)
+    destination.write_file(destination_path, source.read_chunks(source_path), source_meta, progress, should_cancel)
     return 1
 
 
@@ -210,6 +228,7 @@ def transfer_file_paths(
     destination_path: str,
     action: str,
     progress: Callable[[int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict:
     source = TransferStore(source_device)
     destination = TransferStore(destination_device)
@@ -218,6 +237,8 @@ def transfer_file_paths(
         destination_base = destination.normalize(destination_path)
         destination.ensure_dir(destination_base)
         for raw_source_path in source_paths:
+            if should_cancel and should_cancel():
+                raise TransferCancelled("Transfer cancelled.")
             source_path = source.normalize(raw_source_path)
             destination_item = destination.join(destination_base, source.basename(source_path))
             if source_device.id == destination_device.id:
@@ -225,9 +246,11 @@ def transfer_file_paths(
                     raise ValueError("Source and destination are the same path.")
                 if destination_item.startswith(f"{source_path.rstrip('/')}/"):
                     raise ValueError("Destination cannot be inside the selected source folder.")
-            copied_files += copy_tree(source, destination, source_path, destination_item, progress)
+            copied_files += copy_tree(source, destination, source_path, destination_item, progress, should_cancel)
         if action == "move":
             for raw_source_path in source_paths:
+                if should_cancel and should_cancel():
+                    raise TransferCancelled("Transfer cancelled.")
                 source.delete_tree(raw_source_path)
         return {
             "ok": True,

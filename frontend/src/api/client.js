@@ -39,4 +39,5 @@ export const api = {
   transferFiles: (payload) => request("/transfers/files", { method: "POST", body: JSON.stringify(payload) }),
   createTransferJob: (payload) => request("/transfers/jobs", { method: "POST", body: JSON.stringify(payload) }),
   listTransferJobs: () => request("/transfers/jobs"),
+  cancelTransferJob: (id) => request(`/transfers/jobs/${id}/cancel`, { method: "POST" }),
 }

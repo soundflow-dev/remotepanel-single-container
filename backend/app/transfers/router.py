@@ -12,7 +12,7 @@ from app.database.models import TransferJob, User
 from app.database.session import get_db
 from app.devices.service import get_device
 from app.transfers.files import transfer_file_paths
-from app.transfers.jobs import create_transfer_job, get_transfer_job, list_transfer_jobs, run_transfer_job
+from app.transfers.jobs import cancel_transfer_job, create_transfer_job, get_transfer_job, list_transfer_jobs, run_transfer_job
 
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
@@ -159,6 +159,18 @@ def transfer_job(
     user: User = Depends(current_user),
 ):
     job = get_transfer_job(db, user, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer job not found.")
+    return serialize_job(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=TransferJobResponse)
+def cancel_job(
+    job_id: int,
+    db: DbSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    job = cancel_transfer_job(db, user, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer job not found.")
     return serialize_job(job)
