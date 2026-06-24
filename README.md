@@ -21,7 +21,9 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 - SFTP file explorer with multi-select actions
 - SFTP to SFTP copy/move that copies file contents, preserves basic timestamps when possible, and ignores incompatible xattrs/ACLs
 - Initial SMB share support for listing, downloading, creating folders, renaming, deleting, and copying/moving to or from SFTP/SMB
-- Background transfer jobs with basic progress and recent history in the dashboard
+- Machines can own multiple SMB/NFS share records instead of treating each share as a separate machine
+- Background transfer jobs with progress, speed, ETA, cancellation, recent history, and dismissible completed jobs
+- Cancelled jobs clean up destination files/folders created by that job when safe
 - NFS connection records are accepted as groundwork, but browsing/mounting NFS is not implemented yet
 - Responsive dark UI for desktop, tablet, and phone
 - Transfer policy endpoint documenting the default "Transfers that just work" behavior
@@ -63,16 +65,16 @@ On first launch, create the administrator account. The setup route is locked aft
 
 ## Adding Shares
 
-SSH/SFTP devices use a host/IP, port, user, and password or private key.
+Machines use a friendly name and host/IP. SSH/SFTP access is optional and can be enabled per machine.
 
-SMB devices use a share path. Use the full share path when possible:
+SMB shares are added inside a machine through its Shares button. Use the full share path when possible:
 
 ```text
 smb://10.10.20.8/Media
 \\10.10.20.8\Media
 ```
 
-If the device has multiple shares, add each share as a separate connection for now. The stored SMB password is encrypted and is never sent back to the frontend after saving.
+If the machine has multiple shares, add each share under that machine. The stored SMB password is encrypted and is never sent back to the frontend after saving.
 
 NFS paths can be saved in either form below, but NFS browsing is still planned:
 

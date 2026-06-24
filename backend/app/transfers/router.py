@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.service import get_current_user
 from app.database.models import TransferJob, User
 from app.database.session import get_db
-from app.devices.service import get_device
+from app.devices.service import get_device, get_device_share
 from app.transfers.files import transfer_file_paths
 from app.transfers.jobs import cancel_transfer_job, create_transfer_job, dismiss_transfer_job, get_transfer_job, list_transfer_jobs, run_transfer_job
 
@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
 
 class FileTransferRequest(BaseModel):
+    source_target_type: str = Field(default="device", pattern="^(device|share)$")
+    destination_target_type: str = Field(default="device", pattern="^(device|share)$")
     source_device_id: int
     destination_device_id: int
     source_paths: list[str] = Field(min_length=1, max_length=200)
@@ -30,6 +32,8 @@ class TransferJobResponse(BaseModel):
     id: int
     source_device_id: int
     destination_device_id: int
+    source_target_type: str
+    destination_target_type: str
     source_device_name: str
     destination_device_name: str
     source_paths: list[str]
@@ -102,6 +106,8 @@ def serialize_job(job: TransferJob) -> TransferJobResponse:
         id=job.id,
         source_device_id=job.source_device_id,
         destination_device_id=job.destination_device_id,
+        source_target_type=job.source_target_type,
+        destination_target_type=job.destination_target_type,
         source_device_name=job.source_device_name,
         destination_device_name=job.destination_device_name,
         source_paths=json.loads(job.source_paths_json),
@@ -130,16 +136,18 @@ def start_transfer_job(
     db: DbSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    source_device = get_device(db, user, payload.source_device_id)
-    destination_device = get_device(db, user, payload.destination_device_id)
+    source_target = get_device_share(db, user, payload.source_device_id) if payload.source_target_type == "share" else get_device(db, user, payload.source_device_id)
+    destination_target = get_device_share(db, user, payload.destination_device_id) if payload.destination_target_type == "share" else get_device(db, user, payload.destination_device_id)
     job = create_transfer_job(
         db=db,
         owner=user,
-        source_device=source_device,
-        destination_device=destination_device,
+        source_target=source_target,
+        destination_target=destination_target,
         source_paths=payload.source_paths,
         destination_path=payload.destination_path,
         action=payload.action,
+        source_target_type=payload.source_target_type,
+        destination_target_type=payload.destination_target_type,
     )
     background_tasks.add_task(run_transfer_job, job.id)
     return serialize_job(job)

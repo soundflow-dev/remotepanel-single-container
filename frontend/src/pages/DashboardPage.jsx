@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Activity, FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, Wifi, X } from "lucide-react"
+import { Activity, FolderOpen, Pencil, Plus, Power, Server, Terminal, Trash2, X } from "lucide-react"
 
 import { api } from "../api/client"
 import { FileExplorer } from "../components/FileExplorer"
@@ -7,14 +7,25 @@ import { SshTerminal } from "../components/SshTerminal"
 
 const emptyForm = {
   name: "",
-  connection_type: "ssh_sftp",
+  connection_type: "machine",
   connection_url: "",
   host: "",
   port: 22,
   username: "",
-  auth_method: "password",
+  auth_method: "none",
   password: "",
   private_key: "",
+  active: true,
+}
+
+const emptyShareForm = {
+  name: "",
+  connection_type: "smb",
+  connection_url: "",
+  port: 445,
+  username: "",
+  auth_method: "password",
+  password: "",
   active: true,
 }
 
@@ -43,6 +54,23 @@ function averageJobSpeed(job) {
   return Math.round(job.transferred_bytes / elapsedSeconds)
 }
 
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "calculating ETA"
+  const rounded = Math.round(seconds)
+  const hours = Math.floor(rounded / 3600)
+  const minutes = Math.floor((rounded % 3600) / 60)
+  const secs = rounded % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${secs}s`
+  return `${secs}s`
+}
+
+function jobEta(job, speed) {
+  if (!speed || !job.total_bytes || ["completed", "failed", "cancelled"].includes(job.status)) return ""
+  const remaining = Math.max(job.total_bytes - job.transferred_bytes, 0)
+  return formatDuration(remaining / speed)
+}
+
 export function DashboardPage() {
   const [devices, setDevices] = useState([])
   const [form, setForm] = useState(emptyForm)
@@ -53,6 +81,10 @@ export function DashboardPage() {
   const [testingId, setTestingId] = useState(null)
   const [terminalDevice, setTerminalDevice] = useState(null)
   const [filesDevice, setFilesDevice] = useState(null)
+  const [filesTargetType, setFilesTargetType] = useState("device")
+  const [sharesDevice, setSharesDevice] = useState(null)
+  const [shareForm, setShareForm] = useState(emptyShareForm)
+  const [shareBusy, setShareBusy] = useState(false)
   const [fileClipboard, setFileClipboard] = useState(null)
   const [transferJobs, setTransferJobs] = useState([])
   const [cancellingJobId, setCancellingJobId] = useState(null)
@@ -81,17 +113,16 @@ export function DashboardPage() {
 
   const update = (event) => {
     const { name, value, type, checked } = event.target
+    setForm({ ...form, [name]: type === "checkbox" ? checked : value })
+  }
+
+  const updateShare = (event) => {
+    const { name, value, type, checked } = event.target
     if (name === "connection_type") {
-      if (value === "ssh_sftp") {
-        setForm({ ...form, connection_type: value, connection_url: "", port: 22, auth_method: "password" })
-      } else if (value === "smb") {
-        setForm({ ...form, connection_type: value, connection_url: "", host: "", port: 445, auth_method: "password" })
-      } else {
-        setForm({ ...form, connection_type: value, connection_url: "", host: "", port: 2049, username: "", auth_method: "none", password: "", private_key: "" })
-      }
+      setShareForm({ ...shareForm, connection_type: value, port: value === "smb" ? 445 : 2049, auth_method: value === "smb" ? "password" : "none", password: "" })
       return
     }
-    setForm({ ...form, [name]: type === "checkbox" ? checked : value })
+    setShareForm({ ...shareForm, [name]: type === "checkbox" ? checked : value })
   }
 
   function startCreate() {
@@ -200,17 +231,35 @@ export function DashboardPage() {
 
   function openTerminal(device) {
     setFilesDevice(null)
+    setSharesDevice(null)
     setTerminalDevice(device)
   }
 
   function openFiles(device) {
     setTerminalDevice(null)
+    setSharesDevice(null)
+    setFilesTargetType("device")
     setFilesDevice(device)
+  }
+
+  function openShareFiles(share) {
+    setTerminalDevice(null)
+    setSharesDevice(null)
+    setFilesTargetType("share")
+    setFilesDevice(share)
+  }
+
+  function openShares(device) {
+    setTerminalDevice(null)
+    setFilesDevice(null)
+    setSharesDevice(device)
+    setShareForm(emptyShareForm)
   }
 
   function closeWorkspace() {
     setTerminalDevice(null)
     setFilesDevice(null)
+    setSharesDevice(null)
   }
 
   function handleTransferJobCreated(job) {
@@ -238,6 +287,48 @@ export function DashboardPage() {
     }
   }
 
+  async function addShare(event) {
+    event.preventDefault()
+    if (!sharesDevice) return
+    setShareBusy(true)
+    setMessage("")
+    try {
+      const payload = {
+        ...shareForm,
+        port: Number(shareForm.port),
+        password: shareForm.auth_method === "password" ? shareForm.password : null,
+      }
+      await api.createShare(sharesDevice.id, payload)
+      setShareForm(emptyShareForm)
+      await loadDevices()
+      const shares = await api.listShares(sharesDevice.id)
+      setSharesDevice((current) => current ? { ...current, shares } : current)
+      setMessage("Share added.")
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setShareBusy(false)
+    }
+  }
+
+  async function removeShare(share) {
+    if (!window.confirm(`Delete share ${share.name}?`)) return
+    await api.deleteShare(share.id)
+    await loadDevices()
+    if (sharesDevice) {
+      setSharesDevice({ ...sharesDevice, shares: await api.listShares(sharesDevice.id) })
+    }
+  }
+
+  async function testShare(share) {
+    try {
+      const result = await api.testShare(share.id)
+      setMessage(result.status)
+    } catch (err) {
+      setMessage(err.message)
+    }
+  }
+
   function TransferJobsPanel() {
     if (transferJobs.length === 0) return null
     return (
@@ -254,6 +345,7 @@ export function DashboardPage() {
             const progress = jobProgress(job)
             const verb = job.action === "move" ? "Move" : "Copy"
             const speed = job.status === "completed" ? averageJobSpeed(job) : job.speed_bytes_per_second
+            const eta = jobEta(job, speed)
             const canCancel = ["pending", "running", "cancelling"].includes(job.status)
             const canDismiss = ["completed", "failed", "cancelled"].includes(job.status)
             return (
@@ -266,7 +358,7 @@ export function DashboardPage() {
                     <p className="mt-1 truncate text-xs text-muted">
                       {job.status === "failed" || job.status === "cancelled"
                         ? job.error
-                        : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${speed ? formatSpeed(speed) : "measuring speed"} · ${job.copied_files || 0}/${job.total_files || 0} files`}
+                        : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${speed ? formatSpeed(speed) : "measuring speed"}${eta ? ` · ETA ${eta}` : ""} · ${job.copied_files || 0}/${job.total_files || 0} files`}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -296,18 +388,93 @@ export function DashboardPage() {
     )
   }
 
+  function SharesPanel({ device }) {
+    const shares = device.shares ?? []
+    return (
+      <section className="rounded-lg border border-line bg-panel">
+        <header className="flex flex-col gap-3 border-b border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-ink">{device.name} shares</h3>
+            <p className="truncate text-xs text-muted">{device.host}</p>
+          </div>
+          <button className="btn-secondary px-3" onClick={closeWorkspace}>
+            <X size={17} aria-hidden="true" />
+            Close
+          </button>
+        </header>
+        <div className="space-y-4 p-4">
+          <form className="grid gap-3 rounded-md border border-line bg-surface p-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={addShare}>
+            <div>
+              <label className="label" htmlFor="share-name">Name</label>
+              <input className="field mt-1" id="share-name" name="name" value={shareForm.name} onChange={updateShare} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="share-type">Type</label>
+              <select className="field mt-1" id="share-type" name="connection_type" value={shareForm.connection_type} onChange={updateShare}>
+                <option value="smb">SMB</option>
+                <option value="nfs">NFS</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="share-path">Share path</label>
+              <input className="field mt-1" id="share-path" name="connection_url" value={shareForm.connection_url} onChange={updateShare} placeholder={shareForm.connection_type === "smb" ? `smb://${device.host}/Share` : `${device.host}:/export`} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="share-port">Port</label>
+              <input className="field mt-1" id="share-port" name="port" type="number" min="1" max="65535" value={shareForm.port} onChange={updateShare} required />
+            </div>
+            {shareForm.connection_type === "smb" && (
+              <>
+                <div>
+                  <label className="label" htmlFor="share-user">User</label>
+                  <input className="field mt-1" id="share-user" name="username" value={shareForm.username} onChange={updateShare} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="share-password">Password</label>
+                  <input className="field mt-1" id="share-password" name="password" type="password" value={shareForm.password} onChange={updateShare} required={shareForm.auth_method === "password"} />
+                </div>
+              </>
+            )}
+            <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3">
+              <button className="btn-primary" disabled={shareBusy}>{shareBusy ? "Saving..." : "Add share"}</button>
+            </div>
+          </form>
+
+          <div className="space-y-3">
+            {shares.map((share) => (
+              <article key={share.id} className="flex flex-col gap-3 rounded-md border border-line bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h4 className="truncate text-sm font-semibold text-ink">{share.name}</h4>
+                  <p className="truncate text-xs text-muted">{share.connection_url}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn-secondary min-h-9 px-3" onClick={() => testShare(share)}>Test</button>
+                  <button className="btn-secondary min-h-9 px-3" onClick={() => openShareFiles(share)} disabled={share.connection_type !== "smb"}>Files</button>
+                  <button className="btn-danger min-h-9 px-3" onClick={() => removeShare(share)}>
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              </article>
+            ))}
+            {shares.length === 0 && <p className="rounded-md border border-dashed border-line px-4 py-8 text-center text-sm text-muted">No shares added for this machine.</p>}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   function DeviceActions({ device, compact = false }) {
     return (
       <div className={compact ? "grid grid-cols-2 gap-2" : "mt-4 grid grid-cols-2 gap-2"}>
-        <button className="btn-secondary px-3" onClick={() => testDevice(device)} disabled={testingId === device.id}>
-          <Wifi size={17} aria-hidden="true" />
-          {testingId === device.id ? "Testing" : "Test"}
+        <button className="btn-secondary px-3" onClick={() => openShares(device)}>
+          <FolderOpen size={17} aria-hidden="true" />
+          Shares
         </button>
         <button className="btn-secondary px-3" onClick={() => openTerminal(device)} disabled={device.connection_type !== "ssh_sftp"}>
           <Terminal size={17} aria-hidden="true" />
           Terminal
         </button>
-        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={!["ssh_sftp", "smb"].includes(device.connection_type)} title={["ssh_sftp", "smb"].includes(device.connection_type) ? "Open file explorer" : "NFS file explorer coming next"}>
+        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={!["ssh_sftp", "smb"].includes(device.connection_type)} title={["ssh_sftp", "smb"].includes(device.connection_type) ? "Open files" : "Enable SSH/SFTP or add a share to browse files"}>
           <FolderOpen size={17} aria-hidden="true" />
           Files
         </button>
@@ -324,13 +491,13 @@ export function DashboardPage() {
   }
 
   function DeviceSummary({ device }) {
-    const activeWorkspace = terminalDevice?.id === device.id || filesDevice?.id === device.id
+    const activeWorkspace = terminalDevice?.id === device.id || (filesTargetType === "device" && filesDevice?.id === device.id) || sharesDevice?.id === device.id
     return (
       <article className={`rounded-lg border p-3 ${activeWorkspace ? "border-signal bg-surface" : "border-line bg-panel"}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-ink">{device.name}</h3>
-            <p className="truncate text-xs text-muted">{device.connection_url || `${device.username ? `${device.username}@` : ""}${device.host}:${device.port}`}</p>
+            <p className="truncate text-xs text-muted">{device.host}{device.connection_type === "ssh_sftp" ? `:${device.port}` : ""} · {(device.shares ?? []).length} share{(device.shares ?? []).length === 1 ? "" : "s"}</p>
           </div>
           <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${device.active ? "bg-teal-950 text-teal-200" : "bg-slate-800 text-slate-300"}`}>
             <Power size={13} aria-hidden="true" />
@@ -347,11 +514,11 @@ export function DashboardPage() {
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Devices</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">Add SSH/SFTP and SMB connections and test them from one self-hosted control panel.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">Add machines, optional SSH/SFTP access, and multiple SMB/NFS shares per machine.</p>
         </div>
         <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
           <Plus size={18} aria-hidden="true" />
-          Add connection
+          Add machine
         </button>
       </section>
 
@@ -361,76 +528,61 @@ export function DashboardPage() {
 
       {showForm && (
         <section className="rounded-lg border border-line bg-panel p-4 sm:p-5">
-          <h3 className="mb-4 text-lg font-semibold text-ink">{editingDevice ? "Edit connection" : "New connection"}</h3>
+          <h3 className="mb-4 text-lg font-semibold text-ink">{editingDevice ? "Edit machine" : "New machine"}</h3>
           <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={submit}>
             <div>
               <label className="label" htmlFor="name">Friendly name</label>
               <input className="field mt-1" id="name" name="name" value={form.name} onChange={update} required />
             </div>
             <div>
-              <label className="label" htmlFor="connection_type">Connection type</label>
-              <select className="field mt-1" id="connection_type" name="connection_type" value={form.connection_type} onChange={update} disabled={Boolean(editingDevice)}>
-                <option value="ssh_sftp">SSH/SFTP</option>
-                <option value="smb">SMB</option>
-                <option value="nfs">NFS</option>
-              </select>
+              <label className="label" htmlFor="host">Host/IP</label>
+              <input className="field mt-1" id="host" name="host" value={form.host} onChange={update} required />
             </div>
-            <div>
-              <label className="label" htmlFor={form.connection_type === "ssh_sftp" ? "host" : "connection_url"}>
-                {form.connection_type === "ssh_sftp" ? "Host/IP" : "Share path"}
-              </label>
-              {form.connection_type === "ssh_sftp" ? (
-                <input className="field mt-1" id="host" name="host" value={form.host} onChange={update} required />
-              ) : (
-                <input
-                  className="field mt-1"
-                  id="connection_url"
-                  name="connection_url"
-                  value={form.connection_url}
-                  onChange={update}
-                  placeholder={form.connection_type === "smb" ? "\\\\10.10.20.8\\Share or smb://10.10.20.8/Share" : "10.10.20.8:/export or nfs://10.10.20.8/export"}
-                  required
-                />
-              )}
-            </div>
-            <div>
-              <label className="label" htmlFor="port">Port</label>
-              <input className="field mt-1" id="port" name="port" type="number" min="1" max="65535" value={form.port} onChange={update} required />
-            </div>
-            <div>
-              <label className="label" htmlFor="username">User</label>
-              <input className="field mt-1" id="username" name="username" value={form.username} onChange={update} required={form.connection_type !== "nfs"} />
-            </div>
-            <div>
-              <label className="label" htmlFor="auth_method">Auth method</label>
-              <select className="field mt-1" id="auth_method" name="auth_method" value={form.auth_method} onChange={update}>
-                {form.connection_type === "nfs" ? (
-                  <option value="none">None</option>
-                ) : (
-                  <>
+            <label className="flex min-h-11 items-end gap-3 text-sm text-ink">
+              <input
+                className="mb-3 h-5 w-5 rounded border-line bg-surface accent-teal-400"
+                type="checkbox"
+                checked={form.connection_type === "ssh_sftp"}
+                onChange={(event) => setForm({ ...form, connection_type: event.target.checked ? "ssh_sftp" : "machine", auth_method: event.target.checked ? "password" : "none", username: event.target.checked ? form.username : "", password: "", private_key: "" })}
+              />
+              Enable SSH/SFTP
+            </label>
+            {form.connection_type === "ssh_sftp" && (
+              <>
+                <div>
+                  <label className="label" htmlFor="port">SSH port</label>
+                  <input className="field mt-1" id="port" name="port" type="number" min="1" max="65535" value={form.port} onChange={update} required />
+                </div>
+                <div>
+                  <label className="label" htmlFor="username">SSH user</label>
+                  <input className="field mt-1" id="username" name="username" value={form.username} onChange={update} required />
+                </div>
+                <div>
+                  <label className="label" htmlFor="auth_method">SSH auth</label>
+                  <select className="field mt-1" id="auth_method" name="auth_method" value={form.auth_method} onChange={update}>
                     <option value="password">Password</option>
-                    {form.connection_type === "ssh_sftp" && <option value="ssh_key">SSH key</option>}
-                  </>
-                )}
-              </select>
-            </div>
-            {form.auth_method === "none" ? null : form.auth_method === "password" ? (
+                    <option value="ssh_key">SSH key</option>
+                  </select>
+                </div>
+              </>
+            )}
+            {form.connection_type === "ssh_sftp" && form.auth_method === "password" ? (
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="label" htmlFor="password">Password</label>
                 <input className="field mt-1" id="password" name="password" type="password" value={form.password} onChange={update} autoComplete="new-password" required={!editingDevice} placeholder={editingDevice ? "Leave blank to keep current password" : ""} />
               </div>
-            ) : (
+            ) : form.connection_type === "ssh_sftp" && form.auth_method === "ssh_key" ? (
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="label" htmlFor="private_key">Private key</label>
                 <textarea className="field mt-1 min-h-36" id="private_key" name="private_key" value={form.private_key} onChange={update} required={!editingDevice} placeholder={editingDevice ? "Leave blank to keep current SSH key" : ""} />
               </div>
-            )}
+            ) : null}
             <label className="flex min-h-11 items-center gap-3 text-sm text-ink">
               <input className="h-5 w-5 rounded border-line bg-surface accent-teal-400" type="checkbox" name="active" checked={form.active} onChange={update} />
               Active
             </label>
             <div className="flex flex-col gap-3 sm:flex-row md:col-span-2 xl:col-span-3">
-              <button className="btn-primary" disabled={busy}>{busy ? "Saving..." : editingDevice ? "Save changes" : "Save connection"}</button>
+              <button className="btn-primary" disabled={busy}>{busy ? "Saving..." : editingDevice ? "Save changes" : "Save machine"}</button>
               <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
             </div>
           </form>
@@ -442,7 +594,7 @@ export function DashboardPage() {
           <div>
             <Server className="mx-auto mb-3 text-muted" size={40} aria-hidden="true" />
             <h3 className="text-lg font-semibold text-ink">No machines configured</h3>
-            <p className="mt-1 text-sm text-muted">First launch starts empty. Add your first SSH/SFTP or SMB connection when ready.</p>
+            <p className="mt-1 text-sm text-muted">First launch starts empty. Add your first machine when ready.</p>
           </div>
         </section>
       ) : (
@@ -459,6 +611,7 @@ export function DashboardPage() {
             ) : filesDevice ? (
               <FileExplorer
                 device={filesDevice}
+                targetType={filesTargetType}
                 onClose={closeWorkspace}
                 clipboard={fileClipboard}
                 onClipboardSet={setFileClipboard}
@@ -466,6 +619,8 @@ export function DashboardPage() {
                 onJobCreated={handleTransferJobCreated}
                 embedded
               />
+            ) : sharesDevice ? (
+              <SharesPanel device={sharesDevice} />
             ) : (
               <section className="grid min-h-[620px] place-items-center rounded-lg border border-line bg-panel/60 p-6 text-center">
                 <div>

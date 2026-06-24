@@ -24,3 +24,7 @@ def run_startup_migrations() -> None:
                 connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN last_progress_at DATETIME"))
             if "dismissed_at" not in transfer_job_columns:
                 connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN dismissed_at DATETIME"))
+            if "source_target_type" not in transfer_job_columns:
+                connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN source_target_type VARCHAR(16) NOT NULL DEFAULT 'device'"))
+            if "destination_target_type" not in transfer_job_columns:
+                connection.execute(text("ALTER TABLE transfer_jobs ADD COLUMN destination_target_type VARCHAR(16) NOT NULL DEFAULT 'device'"))

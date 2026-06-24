@@ -58,6 +58,27 @@ class Device(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     owner: Mapped[User] = relationship(back_populates="devices")
+    shares: Mapped[List["DeviceShare"]] = relationship(back_populates="device", cascade="all, delete-orphan")
+
+
+class DeviceShare(Base):
+    __tablename__ = "device_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    connection_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    connection_url: Mapped[str] = mapped_column(Text, nullable=False)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False)
+    username: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    auth_method: Mapped[str] = mapped_column(String(32), default="none", nullable=False)
+    credentials_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    device: Mapped[Device] = relationship(back_populates="shares")
 
 
 class TransferJob(Base):
@@ -67,6 +88,8 @@ class TransferJob(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     source_device_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     destination_device_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    source_target_type: Mapped[str] = mapped_column(String(16), default="device", nullable=False)
+    destination_target_type: Mapped[str] = mapped_column(String(16), default="device", nullable=False)
     source_device_name: Mapped[str] = mapped_column(String(120), nullable=False)
     destination_device_name: Mapped[str] = mapped_column(String(120), nullable=False)
     source_paths_json: Mapped[str] = mapped_column(Text, nullable=False)

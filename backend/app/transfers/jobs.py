@@ -26,18 +26,22 @@ def comparable_datetime(value: datetime) -> datetime:
 def create_transfer_job(
     db: DbSession,
     owner: User,
-    source_device: Device,
-    destination_device: Device,
+    source_target,
+    destination_target,
     source_paths: list[str],
     destination_path: str,
     action: str,
+    source_target_type: str = "device",
+    destination_target_type: str = "device",
 ) -> TransferJob:
     job = TransferJob(
         owner_id=owner.id,
-        source_device_id=source_device.id,
-        destination_device_id=destination_device.id,
-        source_device_name=source_device.name,
-        destination_device_name=destination_device.name,
+        source_device_id=source_target.id,
+        destination_device_id=destination_target.id,
+        source_target_type=source_target_type,
+        destination_target_type=destination_target_type,
+        source_device_name=source_target.name,
+        destination_device_name=destination_target.name,
         source_paths_json=json.dumps(source_paths),
         destination_path=destination_path,
         action=action,
@@ -89,6 +93,14 @@ def dismiss_transfer_job(db: DbSession, owner: User, job_id: int) -> TransferJob
     return job
 
 
+def _load_target(db: DbSession, owner_id: int, target_type: str, target_id: int):
+    if target_type == "share":
+        from app.database.models import DeviceShare
+
+        return db.query(DeviceShare).join(Device).filter(DeviceShare.id == target_id, Device.owner_id == owner_id).first()
+    return db.query(Device).filter(Device.id == target_id, Device.owner_id == owner_id).first()
+
+
 def run_transfer_job(job_id: int) -> None:
     db = SessionLocal()
     transferred_since_commit = 0
@@ -105,11 +117,11 @@ def run_transfer_job(job_id: int) -> None:
             db.commit()
             return
 
-        source_device = db.query(Device).filter(Device.id == job.source_device_id, Device.owner_id == job.owner_id).first()
-        destination_device = db.query(Device).filter(Device.id == job.destination_device_id, Device.owner_id == job.owner_id).first()
-        if not source_device or not destination_device:
+        source_target = _load_target(db, job.owner_id, job.source_target_type, job.source_device_id)
+        destination_target = _load_target(db, job.owner_id, job.destination_target_type, job.destination_device_id)
+        if not source_target or not destination_target:
             job.status = "failed"
-            job.error = "Source or destination device no longer exists."
+            job.error = "Source or destination no longer exists."
             job.finished_at = utc_now()
             db.commit()
             return
@@ -120,7 +132,7 @@ def run_transfer_job(job_id: int) -> None:
         job.last_progress_at = job.started_at
         db.commit()
 
-        total_bytes, total_files = measure_transfer_paths(source_device, source_paths)
+        total_bytes, total_files = measure_transfer_paths(source_target, source_paths)
         status_value = db.query(TransferJob.status).filter(TransferJob.id == job_id).scalar()
         if status_value == "cancelling":
             raise TransferCancelled("Transfer cancelled.")
@@ -151,8 +163,8 @@ def run_transfer_job(job_id: int) -> None:
             return status_value == "cancelling"
 
         result = transfer_file_paths(
-            source_device=source_device,
-            destination_device=destination_device,
+            source_device=source_target,
+            destination_device=destination_target,
             source_paths=source_paths,
             destination_path=job.destination_path,
             action=job.action,

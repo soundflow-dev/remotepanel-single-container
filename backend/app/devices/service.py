@@ -7,9 +7,9 @@ import paramiko
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DbSession
 
-from app.database.models import Device, User
+from app.database.models import Device, DeviceShare, User
 from app.devices.paths import parse_connection_path
-from app.devices.schemas import DeviceCreate, DeviceUpdate
+from app.devices.schemas import DeviceCreate, DeviceShareCreate, DeviceShareUpdate, DeviceUpdate
 from app.files.smb import list_smb_directory
 from app.security.crypto import decrypt_json, encrypt_json
 
@@ -25,9 +25,14 @@ def _credential_payload(payload: DeviceCreate | DeviceUpdate) -> dict[str, str]:
 
 def create_device(db: DbSession, owner: User, payload: DeviceCreate) -> Device:
     credentials = _credential_payload(payload)
+    if payload.connection_type == "machine":
+        if not payload.host:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Host/IP is required.")
+        parsed_path = parse_connection_path("ssh_sftp", None, payload.host, payload.port or 22)
+    else:
+        parsed_path = parse_connection_path(payload.connection_type, payload.connection_url, payload.host, payload.port)
     if payload.connection_type in ("smb", "nfs") and not (payload.connection_url or payload.host):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Share path is required.")
-    parsed_path = parse_connection_path(payload.connection_type, payload.connection_url, payload.host, payload.port)
     if payload.connection_type == "ssh_sftp" and not payload.username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is required for SSH/SFTP.")
     if payload.connection_type == "ssh_sftp" and payload.auth_method == "none":
@@ -71,7 +76,7 @@ def update_device(db: DbSession, owner: User, device_id: int, payload: DeviceUpd
         value = getattr(payload, field)
         if value is not None:
             setattr(device, field, value)
-    if payload.connection_url is not None:
+    if payload.connection_url is not None and device.connection_type != "machine":
         parsed_path = parse_connection_path(device.connection_type, payload.connection_url, device.host, device.port)
         device.connection_url = parsed_path.normalized_url
         device.host = parsed_path.host
@@ -82,6 +87,74 @@ def update_device(db: DbSession, owner: User, device_id: int, payload: DeviceUpd
     db.commit()
     db.refresh(device)
     return device
+
+
+def _share_credentials(payload: DeviceShareCreate | DeviceShareUpdate) -> dict[str, str]:
+    credentials: dict[str, str] = {}
+    if payload.password:
+        credentials["password"] = payload.password
+    return credentials
+
+
+def list_device_shares(db: DbSession, owner: User, device_id: int) -> list[DeviceShare]:
+    device = get_device(db, owner, device_id)
+    return db.query(DeviceShare).filter(DeviceShare.device_id == device.id).order_by(DeviceShare.name.asc()).all()
+
+
+def get_device_share(db: DbSession, owner: User, share_id: int) -> DeviceShare:
+    share = db.query(DeviceShare).join(Device).filter(DeviceShare.id == share_id, Device.owner_id == owner.id).first()
+    if not share:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share not found.")
+    return share
+
+
+def create_device_share(db: DbSession, owner: User, device_id: int, payload: DeviceShareCreate) -> DeviceShare:
+    device = get_device(db, owner, device_id)
+    parsed_path = parse_connection_path(payload.connection_type, payload.connection_url, device.host, payload.port)
+    credentials = _share_credentials(payload)
+    if payload.auth_method == "password" and not credentials.get("password"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is required.")
+    share = DeviceShare(
+        device_id=device.id,
+        name=payload.name,
+        connection_type=payload.connection_type,
+        connection_url=parsed_path.normalized_url,
+        host=parsed_path.host,
+        port=parsed_path.port,
+        username=payload.username,
+        auth_method=payload.auth_method,
+        credentials_encrypted=encrypt_json(credentials),
+        active=payload.active,
+    )
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+    return share
+
+
+def update_device_share(db: DbSession, owner: User, share_id: int, payload: DeviceShareUpdate) -> DeviceShare:
+    share = get_device_share(db, owner, share_id)
+    for field in ("name", "port", "username", "auth_method", "active"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(share, field, value)
+    if payload.connection_url is not None:
+        parsed_path = parse_connection_path(share.connection_type, payload.connection_url, share.host, share.port)
+        share.connection_url = parsed_path.normalized_url
+        share.host = parsed_path.host
+        share.port = parsed_path.port
+    credentials = decrypt_json(share.credentials_encrypted)
+    credentials.update(_share_credentials(payload))
+    share.credentials_encrypted = encrypt_json(credentials)
+    db.commit()
+    db.refresh(share)
+    return share
+
+
+def delete_device_share(db: DbSession, owner: User, share_id: int) -> None:
+    share = get_device_share(db, owner, share_id)
+    db.delete(share)
+    db.commit()
 
 
 def delete_device(db: DbSession, owner: User, device_id: int) -> None:

@@ -16,7 +16,7 @@ function formatSize(size) {
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onClipboardClear, onJobCreated, embedded = false }) {
+export function FileExplorer({ device, targetType = "device", onClose, clipboard, onClipboardSet, onClipboardClear, onJobCreated, embedded = false }) {
   const [path, setPath] = useState(".")
   const [listing, setListing] = useState({ path: ".", parent: ".", entries: [] })
   const [message, setMessage] = useState("")
@@ -27,7 +27,7 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
     setBusy(true)
     setMessage("")
     try {
-      const result = await api.listFiles(device.id, nextPath)
+      const result = await api.listFiles(targetType, device.id, nextPath)
       setListing(result)
       setPath(result.path)
       setSelectedPaths([])
@@ -45,20 +45,20 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
   async function createFolder() {
     const name = window.prompt("Folder name")
     if (!name) return
-    await api.mkdir(device.id, joinPath(path, name))
+    await api.mkdir(targetType, device.id, joinPath(path, name))
     await load(path)
   }
 
   async function renameEntry(entry) {
     const nextName = window.prompt("New name", entry.name)
     if (!nextName || nextName === entry.name) return
-    await api.renamePath(device.id, entry.path, joinPath(path, nextName))
+    await api.renamePath(targetType, device.id, entry.path, joinPath(path, nextName))
     await load(path)
   }
 
   async function deleteEntry(entry) {
     if (!window.confirm(`Delete ${entry.name}?`)) return
-    await api.deletePath(device.id, entry.path)
+    await api.deletePath(targetType, device.id, entry.path)
     await load(path)
   }
 
@@ -69,7 +69,7 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
     setMessage("")
     try {
       for (const selectedPath of selectedPaths) {
-        await api.deletePath(device.id, selectedPath)
+        await api.deletePath(targetType, device.id, selectedPath)
       }
       await load(path)
       setMessage("Selected items deleted.")
@@ -81,13 +81,14 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
   }
 
   function downloadEntry(entry) {
-    window.location.href = `/api/files/${device.id}/download?path=${encodeURIComponent(entry.path)}`
+    window.location.href = api.downloadUrl(targetType, device.id, entry.path)
   }
 
   function copySelected(action) {
     if (selectedPaths.length === 0) return
     onClipboardSet({
       action,
+      sourceTargetType: targetType,
       sourceDeviceId: device.id,
       sourceDeviceName: device.name,
       sourcePaths: selectedPaths,
@@ -105,6 +106,8 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
     setMessage("")
     try {
       const result = await api.createTransferJob({
+        source_target_type: clipboard.sourceTargetType ?? "device",
+        destination_target_type: targetType,
         source_device_id: clipboard.sourceDeviceId,
         destination_device_id: device.id,
         source_paths: clipboard.sourcePaths,

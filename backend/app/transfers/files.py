@@ -76,6 +76,16 @@ class TransferStore:
             return smbclient.path.isdir(smb_unc_path(self.device, safe_path))
         return stat.S_ISDIR(self.sftp.stat(safe_path).st_mode)
 
+    def exists(self, path: str) -> bool:
+        safe_path = self.normalize(path)
+        try:
+            if self.device.connection_type == "smb":
+                return smbclient.path.exists(smb_unc_path(self.device, safe_path))
+            self.sftp.stat(safe_path)
+            return True
+        except OSError:
+            return False
+
     def children(self, path: str) -> list[tuple[str, str]]:
         safe_path = self.normalize(path)
         if self.device.connection_type == "smb":
@@ -233,6 +243,7 @@ def transfer_file_paths(
     source = TransferStore(source_device)
     destination = TransferStore(destination_device)
     copied_files = 0
+    created_destinations: list[str] = []
     try:
         destination_base = destination.normalize(destination_path)
         destination.ensure_dir(destination_base)
@@ -241,11 +252,13 @@ def transfer_file_paths(
                 raise TransferCancelled("Transfer cancelled.")
             source_path = source.normalize(raw_source_path)
             destination_item = destination.join(destination_base, source.basename(source_path))
-            if source_device.id == destination_device.id:
+            if source_device.id == destination_device.id and source_device.__class__ is destination_device.__class__:
                 if source_path == destination_item:
                     raise ValueError("Source and destination are the same path.")
                 if destination_item.startswith(f"{source_path.rstrip('/')}/"):
                     raise ValueError("Destination cannot be inside the selected source folder.")
+            if not destination.exists(destination_item):
+                created_destinations.append(destination_item)
             copied_files += copy_tree(source, destination, source_path, destination_item, progress, should_cancel)
         if action == "move":
             for raw_source_path in source_paths:
@@ -259,6 +272,14 @@ def transfer_file_paths(
             "files_copied": copied_files,
             "metadata_policy": "basic timestamps when possible; SFTP permissions when safe; xattrs and ACLs ignored",
         }
+    except TransferCancelled:
+        for created_destination in reversed(created_destinations):
+            try:
+                if destination.exists(created_destination):
+                    destination.delete_tree(created_destination)
+            except OSError:
+                pass
+        raise
     finally:
         source.close()
         destination.close()
