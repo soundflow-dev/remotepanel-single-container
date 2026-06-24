@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Trash2, X } from "lucide-react"
+import { ClipboardPaste, Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Trash2, X } from "lucide-react"
 
 import { api } from "../api/client"
 
@@ -16,17 +16,12 @@ function formatSize(size) {
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-export function FileExplorer({ device, onClose, embedded = false }) {
+export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onClipboardClear, embedded = false }) {
   const [path, setPath] = useState(".")
   const [listing, setListing] = useState({ path: ".", parent: ".", entries: [] })
   const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState([])
-  const [transferAction, setTransferAction] = useState(null)
-  const [destinationDeviceId, setDestinationDeviceId] = useState(device.id)
-  const [destinationPath, setDestinationPath] = useState(".")
-  const [destinationListing, setDestinationListing] = useState({ path: ".", parent: ".", entries: [] })
-  const [sftpDevices, setSftpDevices] = useState([device])
 
   async function load(nextPath = path) {
     setBusy(true)
@@ -45,12 +40,6 @@ export function FileExplorer({ device, onClose, embedded = false }) {
 
   useEffect(() => {
     load(".")
-    api.listDevices()
-      .then((devices) => {
-        const available = devices.filter((item) => item.connection_type === "ssh_sftp" && item.active)
-        setSftpDevices(available.length > 0 ? available : [device])
-      })
-      .catch(() => setSftpDevices([device]))
   }, [device])
 
   async function createFolder() {
@@ -95,51 +84,33 @@ export function FileExplorer({ device, onClose, embedded = false }) {
     window.location.href = `/api/files/${device.id}/download?path=${encodeURIComponent(entry.path)}`
   }
 
-  function openTransfer(action) {
-    setTransferAction(action)
-    setDestinationDeviceId(device.id)
-    loadDestination(device.id, path)
-    setMessage("")
+  function copySelected(action) {
+    if (selectedPaths.length === 0) return
+    onClipboardSet({
+      action,
+      sourceDeviceId: device.id,
+      sourceDeviceName: device.name,
+      sourcePaths: selectedPaths,
+    })
+    setMessage(`${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} ready to ${action}. Navigate to a destination folder and paste.`)
+    setSelectedPaths([])
   }
 
-  async function loadDestination(deviceId = destinationDeviceId, nextPath = destinationPath) {
-    setBusy(true)
-    setMessage("")
-    try {
-      const result = await api.listFiles(deviceId, nextPath)
-      setDestinationDeviceId(Number(deviceId))
-      setDestinationPath(result.path)
-      setDestinationListing(result)
-    } catch (err) {
-      setMessage(err.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function createDestinationFolder() {
-    const name = window.prompt("Folder name")
-    if (!name) return
-    await api.mkdir(destinationDeviceId, joinPath(destinationPath, name))
-    await loadDestination(destinationDeviceId, destinationPath)
-  }
-
-  async function runTransfer(event) {
-    event.preventDefault()
-    if (!transferAction || selectedPaths.length === 0) return
+  async function pasteHere() {
+    if (!clipboard) return
     setBusy(true)
     setMessage("")
     try {
       const result = await api.transferSftp({
-        source_device_id: device.id,
-        destination_device_id: Number(destinationDeviceId),
-        source_paths: selectedPaths,
-        destination_path: destinationPath,
-        action: transferAction,
+        source_device_id: clipboard.sourceDeviceId,
+        destination_device_id: device.id,
+        source_paths: clipboard.sourcePaths,
+        destination_path: path,
+        action: clipboard.action,
       })
-      setTransferAction(null)
       await load(path)
-      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} (${result.files_copied} file${result.files_copied === 1 ? "" : "s"}).`)
+      onClipboardClear()
+      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} here.`)
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -193,15 +164,32 @@ export function FileExplorer({ device, onClose, embedded = false }) {
       <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4">
         {message && <p className="mb-3 rounded-md border border-line bg-panel px-4 py-3 text-sm text-ink">{message}</p>}
 
+        {clipboard && (
+          <div className="mb-3 flex flex-col gap-3 rounded-md border border-signal/50 bg-teal-950/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-ink">
+              {clipboard.action === "move" ? "Move" : "Copy"} {clipboard.sourcePaths.length} item{clipboard.sourcePaths.length === 1 ? "" : "s"} from {clipboard.sourceDeviceName}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-primary min-h-9 px-3" onClick={pasteHere} disabled={busy}>
+                <ClipboardPaste size={15} aria-hidden="true" />
+                Paste here
+              </button>
+              <button className="btn-secondary min-h-9 px-3" onClick={onClipboardClear}>
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {selectedCount > 0 && (
           <div className="mb-3 flex flex-col gap-3 rounded-md border border-line bg-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ink">{selectedCount} selected</p>
             <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary min-h-9 px-3" onClick={() => openTransfer("copy")} disabled={busy}>
+              <button className="btn-secondary min-h-9 px-3" onClick={() => copySelected("copy")} disabled={busy}>
                 <Copy size={15} aria-hidden="true" />
                 Copy
               </button>
-              <button className="btn-secondary min-h-9 px-3" onClick={() => openTransfer("move")} disabled={busy}>
+              <button className="btn-secondary min-h-9 px-3" onClick={() => copySelected("move")} disabled={busy}>
                 <MoveRight size={15} aria-hidden="true" />
                 Move
               </button>
@@ -214,63 +202,6 @@ export function FileExplorer({ device, onClose, embedded = false }) {
               </button>
             </div>
           </div>
-        )}
-
-        {transferAction && (
-          <form className="mb-3 overflow-hidden rounded-md border border-line bg-panel" onSubmit={runTransfer}>
-            <div className="border-b border-line px-4 py-3">
-              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-                <div>
-                  <label className="label" htmlFor="destination_device">Destination machine</label>
-                  <select
-                    className="field mt-1"
-                    id="destination_device"
-                    value={destinationDeviceId}
-                    onChange={(event) => loadDestination(Number(event.target.value), ".")}
-                  >
-                    {sftpDevices.map((item) => (
-                      <option key={item.id} value={item.id}>{item.name} · {item.host}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button className="btn-secondary min-h-11" type="button" onClick={createDestinationFolder} disabled={busy}>
-                    <FolderPlus size={16} aria-hidden="true" />
-                    Folder
-                  </button>
-                  <button className="btn-primary min-h-11" disabled={busy}>{transferAction === "move" ? "Move here" : "Copy here"}</button>
-                  <button className="btn-secondary min-h-11" type="button" onClick={() => setTransferAction(null)}>Cancel</button>
-                </div>
-              </div>
-              <p className="mt-3 truncate text-xs text-muted">Destination: {destinationPath}</p>
-            </div>
-
-            <div className="max-h-80 overflow-auto">
-              <button
-                className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left text-sm text-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-45"
-                type="button"
-                onClick={() => loadDestination(destinationDeviceId, destinationListing.parent)}
-                disabled={destinationPath === "." || destinationPath === "/"}
-              >
-                <Folder size={18} aria-hidden="true" />
-                ..
-              </button>
-              {destinationListing.entries.filter((entry) => entry.type === "directory").map((entry) => (
-                <button
-                  key={entry.path}
-                  className="flex w-full min-w-0 items-center gap-3 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface"
-                  type="button"
-                  onClick={() => loadDestination(destinationDeviceId, entry.path)}
-                >
-                  <Folder className="shrink-0 text-teal-300" size={19} aria-hidden="true" />
-                  <span className="truncate text-sm font-medium text-ink">{entry.name}</span>
-                </button>
-              ))}
-              {destinationListing.entries.filter((entry) => entry.type === "directory").length === 0 && (
-                <p className="px-4 py-8 text-center text-sm text-muted">No folders here</p>
-              )}
-            </div>
-          </form>
         )}
 
         <div className="overflow-hidden rounded-lg border border-line bg-panel">

@@ -27,6 +27,7 @@ export function DashboardPage() {
   const [testingId, setTestingId] = useState(null)
   const [terminalDevice, setTerminalDevice] = useState(null)
   const [filesDevice, setFilesDevice] = useState(null)
+  const [fileClipboard, setFileClipboard] = useState(null)
 
   async function loadDevices() {
     setDevices(await api.listDevices())
@@ -313,7 +314,14 @@ export function DashboardPage() {
             {terminalDevice ? (
               <SshTerminal device={terminalDevice} onClose={closeWorkspace} embedded />
             ) : filesDevice ? (
-              <FileExplorer device={filesDevice} onClose={closeWorkspace} embedded />
+              <FileExplorer
+                device={filesDevice}
+                onClose={closeWorkspace}
+                clipboard={fileClipboard}
+                onClipboardSet={setFileClipboard}
+                onClipboardClear={() => setFileClipboard(null)}
+                embedded
+              />
             ) : (
               <section className="grid min-h-[620px] place-items-center rounded-lg border border-line bg-panel/60 p-6 text-center">
                 <div>
