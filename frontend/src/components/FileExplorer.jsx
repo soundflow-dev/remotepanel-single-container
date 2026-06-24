@@ -98,6 +98,9 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
 
   async function pasteHere() {
     if (!clipboard) return
+    const selectedEntries = listing.entries.filter((entry) => selectedPaths.includes(entry.path))
+    const selectedDirectory = selectedEntries.length === 1 && selectedEntries[0].type === "directory" ? selectedEntries[0] : null
+    const pasteDestination = selectedDirectory ? selectedDirectory.path : path
     setBusy(true)
     setMessage("")
     try {
@@ -105,12 +108,12 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
         source_device_id: clipboard.sourceDeviceId,
         destination_device_id: device.id,
         source_paths: clipboard.sourcePaths,
-        destination_path: path,
+        destination_path: pasteDestination,
         action: clipboard.action,
       })
       await load(path)
       onClipboardClear()
-      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} here.`)
+      setMessage(`${result.action === "move" ? "Moved" : "Copied"} ${result.items} item${result.items === 1 ? "" : "s"} to ${selectedDirectory ? selectedDirectory.name : "this folder"}.`)
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -137,6 +140,8 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
 
   const selectedCount = selectedPaths.length
   const allSelected = listing.entries.length > 0 && selectedCount === listing.entries.length
+  const selectedEntries = listing.entries.filter((entry) => selectedPaths.includes(entry.path))
+  const pasteTarget = selectedEntries.length === 1 && selectedEntries[0].type === "directory" ? selectedEntries[0].name : "this folder"
 
   return (
     <section className={embedded ? "flex min-h-[620px] flex-col overflow-hidden rounded-lg border border-line bg-surface" : "fixed inset-0 z-20 flex flex-col bg-surface"}>
@@ -172,7 +177,7 @@ export function FileExplorer({ device, onClose, clipboard, onClipboardSet, onCli
             <div className="flex flex-wrap gap-2">
               <button className="btn-primary min-h-9 px-3" onClick={pasteHere} disabled={busy}>
                 <ClipboardPaste size={15} aria-hidden="true" />
-                Paste here
+                Paste to {pasteTarget}
               </button>
               <button className="btn-secondary min-h-9 px-3" onClick={onClipboardClear}>
                 Clear
