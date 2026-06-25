@@ -153,6 +153,9 @@ TRANSFER_FILE_STREAM_MIN_SIZE=1073741824
 
 # Default: false. Set true if your environment requires client-enforced SMB signing.
 SMB_REQUIRE_SIGNING=false
+
+# Default: ntlm. Use negotiate only if your SMB environment needs it.
+SMB_AUTH_PROTOCOL=ntlm
 ```
 
 For very fast networks and single large files, tune `TRANSFER_FILE_STREAMS` first. For example:

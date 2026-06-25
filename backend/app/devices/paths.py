@@ -41,6 +41,8 @@ def parse_smb_path(raw_path: str | None, fallback_host: str, fallback_port: int 
         share = parts[1] if len(parts) > 1 else None
         remote_path = "/" + "/".join(parts[2:]) if len(parts) > 2 else "/"
     else:
+        if value.startswith("//"):
+            value = f"smb:{value}"
         if value and "://" not in value:
             value = f"smb://{value}"
         parsed = urlparse(value or f"smb://{fallback_host}")

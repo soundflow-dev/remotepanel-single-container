@@ -12,6 +12,7 @@ services:
       TRANSFER_FILE_STREAMS: ${TRANSFER_FILE_STREAMS:-4}
       TRANSFER_FILE_STREAM_MIN_SIZE: ${TRANSFER_FILE_STREAM_MIN_SIZE:-1073741824}
       SMB_REQUIRE_SIGNING: ${SMB_REQUIRE_SIGNING:-false}
+      SMB_AUTH_PROTOCOL: ${SMB_AUTH_PROTOCOL:-ntlm}
     volumes:
       - jarvis-data:/data
     restart: unless-stopped
