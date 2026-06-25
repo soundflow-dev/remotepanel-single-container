@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class DeviceShareCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    connection_type: str = Field(pattern="^(smb|nfs)$")
+    connection_type: str = Field(pattern="^smb$")
     connection_url: str = Field(min_length=1, max_length=4096)
     port: int = Field(default=445, ge=1, le=65535)
     username: str = Field(default="", max_length=120)
@@ -41,7 +41,7 @@ class DeviceShareResponse(BaseModel):
 
 class DeviceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    connection_type: str = Field(default="machine", pattern="^(machine|ssh_sftp|smb|nfs)$")
+    connection_type: str = Field(default="machine", pattern="^(machine|ssh_sftp|smb)$")
     connection_url: str | None = Field(default=None, max_length=4096)
     host: str = Field(default="", max_length=255)
     port: int = Field(ge=1, le=65535)

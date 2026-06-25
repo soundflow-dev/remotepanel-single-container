@@ -4,7 +4,6 @@ import ntpath
 import os
 import posixpath
 import queue
-import shutil
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +14,6 @@ import smbclient
 
 from app.database.models import Device
 from app.devices.service import connect_ssh_device
-from app.files.nfs import nfs_local_path
 from app.files.sftp import normalize_path
 from app.files.smb import register_smb_device, smb_unc_path
 from app.transfers.sftp import ensure_directory, remove_tree
@@ -54,7 +52,6 @@ class TransferStore:
         self.device = device
         self.ssh_client = None
         self.sftp = None
-        self.nfs_root = None
         self.smb_connection_cache = None
         if device.connection_type == "ssh_sftp":
             self.ssh_client = connect_ssh_device(device)
@@ -62,8 +59,6 @@ class TransferStore:
         elif device.connection_type == "smb":
             self.smb_connection_cache = {}
             register_smb_device(device, connection_cache=self.smb_connection_cache)
-        elif device.connection_type == "nfs":
-            self.nfs_root = nfs_local_path(device, ".")
         else:
             raise ValueError(f"{device.connection_type.upper()} file transfers are not available yet.")
 
@@ -74,7 +69,7 @@ class TransferStore:
             self.ssh_client.close()
 
     def normalize(self, path: str | None) -> str:
-        if self.device.connection_type in ("smb", "nfs"):
+        if self.device.connection_type == "smb":
             if not path or path in (".", "/", "\\"):
                 return "."
             return path.strip("\\/").replace("\\", "/")
@@ -86,11 +81,6 @@ class TransferStore:
             return ntpath.basename(cleaned.replace("/", "\\"))
         return posixpath.basename(cleaned)
 
-    def local_path(self, path: str):
-        if self.device.connection_type != "nfs":
-            raise ValueError("Local paths are only available for NFS targets.")
-        return nfs_local_path(self.device, self.normalize(path))
-
     def join(self, base: str, name: str) -> str:
         base = self.normalize(base)
         if base in ("", "."):
@@ -101,16 +91,12 @@ class TransferStore:
         safe_path = self.normalize(path)
         if self.device.connection_type == "smb":
             return smbclient.stat(smb_unc_path(self.device, safe_path), connection_cache=self.smb_connection_cache)
-        if self.device.connection_type == "nfs":
-            return self.local_path(safe_path).stat()
         return self.sftp.stat(safe_path)
 
     def is_dir(self, path: str) -> bool:
         safe_path = self.normalize(path)
         if self.device.connection_type == "smb":
             return smbclient.path.isdir(smb_unc_path(self.device, safe_path), connection_cache=self.smb_connection_cache)
-        if self.device.connection_type == "nfs":
-            return self.local_path(safe_path).is_dir()
         return stat.S_ISDIR(self.sftp.stat(safe_path).st_mode)
 
     def exists(self, path: str) -> bool:
@@ -118,8 +104,6 @@ class TransferStore:
         try:
             if self.device.connection_type == "smb":
                 return smbclient.path.exists(smb_unc_path(self.device, safe_path), connection_cache=self.smb_connection_cache)
-            if self.device.connection_type == "nfs":
-                return self.local_path(safe_path).exists()
             self.sftp.stat(safe_path)
             return True
         except OSError:
@@ -132,8 +116,6 @@ class TransferStore:
             for entry in smbclient.scandir(smb_unc_path(self.device, safe_path), connection_cache=self.smb_connection_cache):
                 children.append((entry.name, self.join(safe_path, entry.name)))
             return children
-        if self.device.connection_type == "nfs":
-            return [(entry.name, self.join(safe_path, entry.name)) for entry in self.local_path(safe_path).iterdir()]
         return [(attr.filename, self.join(safe_path, attr.filename)) for attr in self.sftp.listdir_attr(safe_path)]
 
     def meta(self, path: str) -> FileMeta:
@@ -154,9 +136,6 @@ class TransferStore:
         if self.device.connection_type == "smb":
             with smbclient.open_file(smb_unc_path(self.device, safe_path), mode="wb", share_access="rwd", connection_cache=self.smb_connection_cache):
                 return
-        if self.device.connection_type == "nfs":
-            with self.local_path(safe_path).open("wb"):
-                return
         with self.sftp.open(safe_path, "wb"):
             return
 
@@ -169,22 +148,11 @@ class TransferStore:
             if not smbclient.path.exists(target, connection_cache=self.smb_connection_cache):
                 smbclient.makedirs(target, exist_ok=True, connection_cache=self.smb_connection_cache)
             return
-        if self.device.connection_type == "nfs":
-            self.local_path(safe_path).mkdir(parents=True, exist_ok=True)
-            return
         ensure_directory(self.sftp, safe_path)
 
     def _read_chunks_direct(self, safe_path: str) -> Iterator[bytes]:
         if self.device.connection_type == "smb":
             with smbclient.open_file(smb_unc_path(self.device, safe_path), mode="rb", share_access="rwd", connection_cache=self.smb_connection_cache) as source_file:
-                while True:
-                    chunk = source_file.read(TRANSFER_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    yield chunk
-            return
-        if self.device.connection_type == "nfs":
-            with self.local_path(safe_path).open("rb") as source_file:
                 while True:
                     chunk = source_file.read(TRANSFER_CHUNK_SIZE)
                     if not chunk:
@@ -257,18 +225,6 @@ class TransferStore:
                     remaining -= len(chunk)
                     yield chunk
             return
-        if self.device.connection_type == "nfs":
-            with self.local_path(safe_path).open("rb") as source_file:
-                source_file.seek(offset)
-                while remaining > 0:
-                    if should_cancel and should_cancel():
-                        raise TransferCancelled("Transfer cancelled.")
-                    chunk = source_file.read(min(TRANSFER_CHUNK_SIZE, remaining))
-                    if not chunk:
-                        break
-                    remaining -= len(chunk)
-                    yield chunk
-            return
         with self.sftp.open(safe_path, "rb") as source_file:
             source_file.seek(offset)
             while remaining > 0:
@@ -291,16 +247,6 @@ class TransferStore:
         safe_path = self.normalize(path)
         if self.device.connection_type == "smb":
             with smbclient.open_file(smb_unc_path(self.device, safe_path), mode="r+b", share_access="rwd", connection_cache=self.smb_connection_cache) as destination_file:
-                destination_file.seek(offset)
-                for chunk in chunks:
-                    if should_cancel and should_cancel():
-                        raise TransferCancelled("Transfer cancelled.")
-                    destination_file.write(chunk)
-                    if progress:
-                        progress(len(chunk))
-            return
-        if self.device.connection_type == "nfs":
-            with self.local_path(safe_path).open("r+b") as destination_file:
                 destination_file.seek(offset)
                 for chunk in chunks:
                     if should_cancel and should_cancel():
@@ -351,14 +297,6 @@ class TransferStore:
                     destination_file.write(chunk)
                     if progress:
                         progress(len(chunk))
-        elif self.device.connection_type == "nfs":
-            with self.local_path(safe_path).open("wb") as destination_file:
-                for chunk in chunks:
-                    if should_cancel and should_cancel():
-                        raise TransferCancelled("Transfer cancelled.")
-                    destination_file.write(chunk)
-                    if progress:
-                        progress(len(chunk))
         else:
             with self.sftp.open(safe_path, "wb") as destination_file:
                 if hasattr(destination_file, "set_pipelined"):
@@ -378,18 +316,13 @@ class TransferStore:
         try:
             if self.device.connection_type == "smb":
                 smbclient.utime(smb_unc_path(self.device, safe_path), (int(source_meta.atime), int(source_meta.mtime)), connection_cache=self.smb_connection_cache)
-            elif self.device.connection_type == "nfs":
-                os.utime(self.local_path(safe_path), (source_meta.atime, source_meta.mtime))
             else:
                 self.sftp.utime(safe_path, (source_meta.atime, source_meta.mtime))
         except Exception:
             pass
-        if self.device.connection_type in ("ssh_sftp", "nfs") and source_meta.mode is not None:
+        if self.device.connection_type == "ssh_sftp" and source_meta.mode is not None:
             try:
-                if self.device.connection_type == "nfs":
-                    os.chmod(self.local_path(safe_path), source_meta.mode & 0o777)
-                else:
-                    self.sftp.chmod(safe_path, source_meta.mode & 0o777)
+                self.sftp.chmod(safe_path, source_meta.mode & 0o777)
             except OSError:
                 pass
 
@@ -403,13 +336,6 @@ class TransferStore:
                 smbclient.rmdir(target, connection_cache=self.smb_connection_cache)
             else:
                 smbclient.remove(target, connection_cache=self.smb_connection_cache)
-            return
-        if self.device.connection_type == "nfs":
-            target = self.local_path(safe_path)
-            if target.is_dir() and not target.is_symlink():
-                shutil.rmtree(target)
-            else:
-                target.unlink()
             return
         remove_tree(self.sftp, safe_path)
 

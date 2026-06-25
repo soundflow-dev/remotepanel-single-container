@@ -27,9 +27,6 @@ def parse_connection_path(connection_type: str, raw_path: str | None, fallback_h
     if connection_type == "smb":
         return parse_smb_path(raw_path, fallback_host, fallback_port)
 
-    if connection_type == "nfs":
-        return parse_nfs_path(raw_path, fallback_host, fallback_port)
-
     raise ValueError("Unsupported connection type.")
 
 
@@ -57,22 +54,3 @@ def parse_smb_path(raw_path: str | None, fallback_host: str, fallback_port: int 
         if remote_path != "/":
             normalized += remote_path
     return ParsedConnectionPath("smb", host, fallback_port or 445, normalized, share, remote_path)
-
-
-def parse_nfs_path(raw_path: str | None, fallback_host: str, fallback_port: int = 2049) -> ParsedConnectionPath:
-    value = (raw_path or "").strip()
-    host = fallback_host
-    export_path = "/"
-    if value.startswith("nfs://"):
-        parsed = urlparse(value)
-        host = parsed.hostname or fallback_host
-        export_path = parsed.path or "/"
-    elif ":" in value:
-        host_part, path_part = value.split(":", 1)
-        host = host_part or fallback_host
-        export_path = path_part or "/"
-    elif value:
-        host = value
-
-    normalized = f"nfs://{host}{export_path}"
-    return ParsedConnectionPath("nfs", host, fallback_port or 2049, normalized, None, export_path)

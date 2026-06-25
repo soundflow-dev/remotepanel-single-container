@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session as DbSession
 from app.database.models import Device, DeviceShare, User
 from app.devices.paths import parse_connection_path
 from app.devices.schemas import DeviceCreate, DeviceShareCreate, DeviceShareUpdate, DeviceUpdate
-from app.files.nfs import list_nfs_directory
 from app.files.smb import list_smb_directory
 from app.security.crypto import decrypt_json, encrypt_json
 
@@ -32,13 +31,13 @@ def create_device(db: DbSession, owner: User, payload: DeviceCreate) -> Device:
         parsed_path = parse_connection_path("ssh_sftp", None, payload.host, payload.port or 22)
     else:
         parsed_path = parse_connection_path(payload.connection_type, payload.connection_url, payload.host, payload.port)
-    if payload.connection_type in ("smb", "nfs") and not (payload.connection_url or payload.host):
+    if payload.connection_type == "smb" and not (payload.connection_url or payload.host):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Share path is required.")
     if payload.connection_type == "ssh_sftp" and not payload.username:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is required for SSH/SFTP.")
     if payload.connection_type == "ssh_sftp" and payload.auth_method == "none":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSH/SFTP requires password or SSH key authentication.")
-    if payload.auth_method == "password" and payload.connection_type != "nfs" and not credentials.get("password"):
+    if payload.auth_method == "password" and not credentials.get("password"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is required.")
     if payload.auth_method == "ssh_key" and not credentials.get("private_key"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Private key is required.")
@@ -222,19 +221,9 @@ def test_smb_device(device: Device) -> tuple[bool, str]:
         return False, f"SMB share connection failed: {exc}"
 
 
-def test_nfs_device(device: Device) -> tuple[bool, str]:
-    try:
-        list_nfs_directory(device, ".")
-        return True, "NFS share connection successful."
-    except Exception as exc:
-        return False, f"NFS share connection failed: {exc}"
-
-
 def test_device_connection(device: Device) -> tuple[bool, str]:
     if device.connection_type == "ssh_sftp":
         return test_ssh_device(device)
     if device.connection_type == "smb":
         return test_smb_device(device)
-    if device.connection_type == "nfs":
-        return test_nfs_device(device)
     return False, "No test is available for this machine."

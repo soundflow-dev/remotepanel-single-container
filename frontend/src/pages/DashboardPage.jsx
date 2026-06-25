@@ -120,7 +120,7 @@ export function DashboardPage() {
   const updateShare = (event) => {
     const { name, value, type, checked } = event.target
     if (name === "connection_type") {
-      setShareForm({ ...shareForm, connection_type: value, port: value === "smb" ? 445 : 2049, auth_method: value === "smb" ? "password" : "none", password: "" })
+      setShareForm({ ...shareForm, connection_type: value, port: 445, auth_method: "password", password: "" })
       return
     }
     setShareForm({ ...shareForm, [name]: type === "checkbox" ? checked : value })
@@ -444,12 +444,11 @@ export function DashboardPage() {
               <label className="label" htmlFor="share-type">Type</label>
               <select className="field mt-1" id="share-type" name="connection_type" value={shareForm.connection_type} onChange={updateShare}>
                 <option value="smb">SMB</option>
-                <option value="nfs">NFS</option>
               </select>
             </div>
             <div>
               <label className="label" htmlFor="share-path">Share path</label>
-              <input className="field mt-1" id="share-path" name="connection_url" value={shareForm.connection_url} onChange={updateShare} placeholder={shareForm.connection_type === "smb" ? `smb://${device.host}/Share` : `${device.host}:/export`} required />
+              <input className="field mt-1" id="share-path" name="connection_url" value={shareForm.connection_url} onChange={updateShare} placeholder={`smb://${device.host}/Share`} required />
             </div>
             <div>
               <label className="label" htmlFor="share-port">Port</label>
@@ -484,7 +483,7 @@ export function DashboardPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button className="btn-secondary min-h-9 px-3" onClick={() => testShare(share)}>Test</button>
-                  <button className="btn-secondary min-h-9 px-3" onClick={() => openShareFiles(share)} disabled={!["smb", "nfs"].includes(share.connection_type)}>Files</button>
+                  <button className="btn-secondary min-h-9 px-3" onClick={() => openShareFiles(share)} disabled={share.connection_type !== "smb"}>Files</button>
                   <button className="btn-secondary min-h-9 px-3" onClick={() => startEditShare(share)}>
                     <Pencil size={15} aria-hidden="true" />
                     Edit
@@ -513,7 +512,7 @@ export function DashboardPage() {
           <Terminal size={17} aria-hidden="true" />
           Terminal
         </button>
-        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={!["ssh_sftp", "smb", "nfs"].includes(device.connection_type)} title={["ssh_sftp", "smb", "nfs"].includes(device.connection_type) ? "Open files" : "Enable SSH/SFTP or add a share to browse files"}>
+        <button className="btn-secondary px-3" onClick={() => openFiles(device)} disabled={!["ssh_sftp", "smb"].includes(device.connection_type)} title={["ssh_sftp", "smb"].includes(device.connection_type) ? "Open files" : "Enable SSH/SFTP or add a share to browse files"}>
           <FolderOpen size={17} aria-hidden="true" />
           Files
         </button>
@@ -553,7 +552,7 @@ export function DashboardPage() {
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Devices</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">Add machines, optional SSH/SFTP access, and multiple SMB/NFS shares per machine.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">Add machines, optional SSH/SFTP access, and multiple SMB shares per machine.</p>
         </div>
         <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
           <Plus size={18} aria-hidden="true" />

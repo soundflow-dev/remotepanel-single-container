@@ -20,18 +20,16 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 - Web SSH terminal over backend WebSocket
 - SFTP file explorer with multi-select actions
 - SFTP to SFTP copy/move that copies file contents, preserves basic timestamps when possible, and ignores incompatible xattrs/ACLs
-- Initial SMB and NFS share support for listing, downloading, creating folders, renaming, deleting, and copying/moving to or from SFTP/SMB/NFS
-- Machines can own multiple SMB/NFS share records instead of treating each share as a separate machine
+- SMB share support for listing, downloading, creating folders, renaming, deleting, and copying/moving to or from SFTP/SMB
+- Machines can own multiple SMB share records instead of treating each share as a separate machine
 - Background transfer jobs with progress, speed, ETA, cancellation, recent history, and dismissible completed jobs
 - Cancelled jobs clean up destination files/folders created by that job when safe
-- NFS shares are mounted inside the backend container under `/data/nfs-mounts`
 - Responsive dark UI for desktop, tablet, and phone
 - Transfer policy endpoint documenting the default "Transfers that just work" behavior
 
 ## Planned Next MVP Steps
 
 - Transfer logs and per-file details
-- NFS mount health, reconnect, and advanced option presets
 - 2FA/TOTP
 - Multi-user permissions
 - Plugins
@@ -75,26 +73,6 @@ smb://10.10.20.8/Media
 ```
 
 If the machine has multiple shares, add each share under that machine. The stored SMB password is encrypted and is never sent back to the frontend after saving.
-
-NFS shares can be added with either form below:
-
-```text
-10.10.20.8:/mnt/pool/share
-nfs://10.10.20.8/mnt/pool/share
-```
-
-NFS browsing and transfers use Linux NFS mounts inside the backend container. Opening the Files view for an NFS share mounts it before listing the directory. The default Compose file installs `nfs-common`, grants the backend container `SYS_ADMIN` plus `apparmor:unconfined`, and runs the backend with host networking so NFS servers see the Unraid/host IP instead of an internal Docker bridge IP.
-
-Authorize the host IP in the NFS server export rules. For example, if Jarvis runs on `10.10.20.7`, allow `10.10.20.7` or your LAN subnet.
-
-You can tune NFS behavior in `.env`:
-
-```env
-NFS_MOUNT_OPTIONS=rw,nfsvers=4,soft,timeo=50,retrans=2
-NFS_MOUNT_ROOT=/data/nfs-mounts
-```
-
-If a NAS only exports NFSv3, change `nfsvers=4` to `nfsvers=3`.
 
 ## Ubuntu Server Install
 

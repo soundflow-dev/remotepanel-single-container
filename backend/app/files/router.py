@@ -9,7 +9,6 @@ from app.auth.service import get_current_user
 from app.database.models import User
 from app.database.session import get_db
 from app.devices.service import get_device, get_device_share
-from app.files.nfs import delete_nfs_path, list_nfs_directory, make_nfs_directory, read_nfs_file, rename_nfs_path
 from app.files.smb import delete_smb_path, list_smb_directory, make_smb_directory, read_smb_file, rename_smb_path
 from app.files.sftp import delete_sftp_path, list_sftp_directory, make_sftp_directory, read_sftp_file, rename_sftp_path
 
@@ -33,17 +32,12 @@ def current_user(request: Request, db: DbSession = Depends(get_db)) -> User:
 def _list_target(target, path: str):
     if target.connection_type == "smb":
         return list_smb_directory(target, path)
-    if target.connection_type == "nfs":
-        return list_nfs_directory(target, path)
     return list_sftp_directory(target, path)
 
 
 def _mkdir_target(target, path: str) -> None:
     if target.connection_type == "smb":
         make_smb_directory(target, path)
-        return
-    if target.connection_type == "nfs":
-        make_nfs_directory(target, path)
         return
     make_sftp_directory(target, path)
 
@@ -52,18 +46,12 @@ def _rename_target(target, source: str, destination: str) -> None:
     if target.connection_type == "smb":
         rename_smb_path(target, source, destination)
         return
-    if target.connection_type == "nfs":
-        rename_nfs_path(target, source, destination)
-        return
     rename_sftp_path(target, source, destination)
 
 
 def _delete_target(target, path: str) -> None:
     if target.connection_type == "smb":
         delete_smb_path(target, path)
-        return
-    if target.connection_type == "nfs":
-        delete_nfs_path(target, path)
         return
     delete_sftp_path(target, path)
 
@@ -74,8 +62,6 @@ def _read_target(target, path: str):
         import io
 
         return filename, io.BytesIO(raw_content)
-    if target.connection_type == "nfs":
-        return read_nfs_file(target, path)
     return read_sftp_file(target, path)
 
 
@@ -84,7 +70,6 @@ def capabilities():
     return {
         "sftp": ["list", "download", "upload"],
         "smb": ["list", "download", "mkdir", "rename", "delete"],
-        "nfs": ["list", "download", "mkdir", "rename", "delete"],
         "transfers": "MVP transfer endpoints will copy file contents and ignore incompatible xattrs/ACLs by design.",
     }
 

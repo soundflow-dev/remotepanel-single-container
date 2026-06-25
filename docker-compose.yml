@@ -13,15 +13,8 @@ services:
       TRANSFER_FILE_STREAM_MIN_SIZE: ${TRANSFER_FILE_STREAM_MIN_SIZE:-1073741824}
       SMB_REQUIRE_SIGNING: ${SMB_REQUIRE_SIGNING:-true}
       SMB_AUTH_PROTOCOL: ${SMB_AUTH_PROTOCOL:-negotiate}
-      NFS_MOUNT_ROOT: ${NFS_MOUNT_ROOT:-/data/nfs-mounts}
-      NFS_MOUNT_OPTIONS: ${NFS_MOUNT_OPTIONS:-rw,nfsvers=4,soft,timeo=50,retrans=2}
     volumes:
       - jarvis-data:/data
-    network_mode: host
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
     restart: unless-stopped
 
   frontend:
@@ -29,8 +22,6 @@ services:
       context: ./frontend
     ports:
       - "${APP_PORT:-8080}:80"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
     restart: unless-stopped
