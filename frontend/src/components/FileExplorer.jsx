@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Trash2, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Search, Trash2, X } from "lucide-react"
 
 import { api } from "../api/client"
 
@@ -56,6 +56,12 @@ function sortEntries(entries, sort) {
   })
 }
 
+function filterEntries(entries, query) {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return entries
+  return entries.filter((entry) => entry.name.toLowerCase().includes(normalizedQuery))
+}
+
 export function FileExplorer({ device, targetType = "device", onClose, clipboard, onClipboardSet, onClipboardClear, onJobCreated, embedded = false }) {
   const [path, setPath] = useState(".")
   const [listing, setListing] = useState({ path: ".", parent: ".", entries: [] })
@@ -64,6 +70,7 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
   const [selectedPaths, setSelectedPaths] = useState([])
   const [historyState, setHistoryState] = useState({ items: ["."], index: 0 })
   const [sort, setSort] = useState({ key: "name", direction: "asc" })
+  const [filterQuery, setFilterQuery] = useState("")
 
   function recordHistoryPath(nextPath) {
     setHistoryState((current) => {
@@ -83,6 +90,7 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
       setListing(result)
       setPath(result.path)
       setSelectedPaths([])
+      setFilterQuery("")
       if (options.recordHistory !== false) {
         recordHistoryPath(result.path)
       }
@@ -248,18 +256,22 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
   }
 
   function toggleSelectAll() {
-    if (selectedPaths.length === sortedEntries.length) {
-      setSelectedPaths([])
+    const visiblePaths = visibleEntries.map((entry) => entry.path)
+    const allVisibleSelected = visiblePaths.length > 0 && visiblePaths.every((entryPath) => selectedPaths.includes(entryPath))
+    if (allVisibleSelected) {
+      setSelectedPaths((current) => current.filter((entryPath) => !visiblePaths.includes(entryPath)))
     } else {
-      setSelectedPaths(sortedEntries.map((entry) => entry.path))
+      setSelectedPaths((current) => [...new Set([...current, ...visiblePaths])])
     }
   }
 
   const sortedEntries = sortEntries(listing.entries, sort)
+  const visibleEntries = filterEntries(sortedEntries, filterQuery)
   const crumbs = pathCrumbs(path)
   const selectedCount = selectedPaths.length
-  const allSelected = sortedEntries.length > 0 && selectedCount === sortedEntries.length
-  const selectedEntries = sortedEntries.filter((entry) => selectedPaths.includes(entry.path))
+  const allSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.includes(entry.path))
+  const selectedEntries = listing.entries.filter((entry) => selectedPaths.includes(entry.path))
+  const selectedFileBytes = selectedEntries.reduce((total, entry) => total + (entry.type === "file" ? entry.size ?? 0 : 0), 0)
   const pasteTarget = selectedEntries.length === 1 && selectedEntries[0].type === "directory" ? selectedEntries[0].name : "this folder"
 
   return (
@@ -306,6 +318,18 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
         <div className="sticky top-0 z-10 border-b border-line bg-surface/95 p-3 backdrop-blur sm:p-4">
           {message && <p className="mb-3 rounded-md border border-line bg-panel px-4 py-3 text-sm text-ink">{message}</p>}
 
+          {(listing.entries.length > 0 || filterQuery) && (
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} aria-hidden="true" />
+                <input className="input min-h-10 pl-9" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Filter this folder" />
+              </label>
+              <p className="text-xs text-muted">
+                {visibleEntries.length} of {listing.entries.length} items
+              </p>
+            </div>
+          )}
+
           {clipboard && (
             <div className="mb-3 flex flex-col gap-3 rounded-md border border-signal/50 bg-teal-950/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-ink">
@@ -325,7 +349,9 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
 
           {selectedCount > 0 && (
             <div className="flex flex-col gap-3 rounded-md border border-line bg-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-ink">{selectedCount} selected</p>
+              <p className="text-sm text-ink">
+                {selectedCount} selected{selectedFileBytes ? ` · ${formatSize(selectedFileBytes)}` : ""}
+              </p>
               <div className="flex flex-wrap gap-2">
                 <button className="btn-secondary min-h-9 px-3" onClick={() => copySelected("copy")} disabled={busy}>
                   <Copy size={15} aria-hidden="true" />
@@ -348,13 +374,13 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
         </div>
 
         <div className="m-3 overflow-hidden rounded-lg border border-line bg-panel sm:m-4">
-          {sortedEntries.length > 0 && (
+          {visibleEntries.length > 0 && (
             <label className="flex items-center gap-3 border-b border-line px-4 py-3 text-sm text-muted">
               <input className="h-5 w-5 rounded border-line bg-surface accent-teal-400" type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-              Select all
+              Select visible
             </label>
           )}
-          {sortedEntries.length > 0 && (
+          {visibleEntries.length > 0 && (
             <div className="hidden border-b border-line bg-surface/60 px-4 py-2 text-xs font-semibold uppercase text-muted md:grid md:grid-cols-[minmax(0,1fr)_120px_180px_auto]">
               <button className="flex items-center gap-1 text-left hover:text-ink" onClick={() => toggleSort("name")}>
                 Name {sortIcon("name")}
@@ -372,7 +398,7 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
             <Folder size={18} aria-hidden="true" />
             ..
           </button>
-          {sortedEntries.map((entry) => (
+          {visibleEntries.map((entry) => (
             <div key={entry.path} className={`grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_120px_180px_auto] ${selectedPaths.includes(entry.path) ? "bg-surface" : ""}`}>
               <div className="flex min-w-0 items-center gap-3">
                 <input className="h-5 w-5 shrink-0 rounded border-line bg-surface accent-teal-400" type="checkbox" checked={selectedPaths.includes(entry.path)} onChange={() => toggleSelection(entry)} onClick={(event) => event.stopPropagation()} />
@@ -405,6 +431,9 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
           ))}
           {listing.entries.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted">Empty folder</p>
+          )}
+          {listing.entries.length > 0 && visibleEntries.length === 0 && (
+            <p className="px-4 py-8 text-center text-sm text-muted">No matching items</p>
           )}
         </div>
       </div>
