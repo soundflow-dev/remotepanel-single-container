@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ClipboardPaste, Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Trash2, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, File, Folder, FolderPlus, MoveRight, RefreshCw, Trash2, X } from "lucide-react"
 
 import { api } from "../api/client"
 
@@ -21,12 +21,57 @@ function entrySizeLabel(entry) {
   return formatSize(entry.size) || "0 B"
 }
 
+function pathCrumbs(currentPath) {
+  if (!currentPath || currentPath === "." || currentPath === "/") {
+    return [{ label: "Root", path: "." }]
+  }
+  const parts = currentPath.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean)
+  return [
+    { label: "Root", path: "." },
+    ...parts.map((part, index) => ({
+      label: part,
+      path: parts.slice(0, index + 1).join("/"),
+    })),
+  ]
+}
+
+function sortEntries(entries, sort) {
+  const direction = sort.direction === "asc" ? 1 : -1
+  return [...entries].sort((a, b) => {
+    if (a.type !== b.type) return a.type === "directory" ? -1 : 1
+
+    let result = 0
+    if (sort.key === "size") {
+      result = (a.size ?? 0) - (b.size ?? 0)
+    } else if (sort.key === "modified") {
+      result = (Date.parse(a.modified_at ?? "") || 0) - (Date.parse(b.modified_at ?? "") || 0)
+    } else {
+      result = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    }
+
+    if (result === 0) {
+      result = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    }
+    return result * direction
+  })
+}
+
 export function FileExplorer({ device, targetType = "device", onClose, clipboard, onClipboardSet, onClipboardClear, onJobCreated, embedded = false }) {
   const [path, setPath] = useState(".")
   const [listing, setListing] = useState({ path: ".", parent: ".", entries: [] })
   const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState([])
+  const [historyState, setHistoryState] = useState({ items: ["."], index: 0 })
+  const [sort, setSort] = useState({ key: "name", direction: "asc" })
+
+  function recordHistoryPath(nextPath) {
+    setHistoryState((current) => {
+      const base = current.items.slice(0, current.index + 1)
+      if (base[base.length - 1] === nextPath) return { items: base, index: base.length - 1 }
+      return { items: [...base, nextPath], index: base.length }
+    })
+  }
 
   async function load(nextPath = path, options = {}) {
     setBusy(true)
@@ -38,6 +83,9 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
       setListing(result)
       setPath(result.path)
       setSelectedPaths([])
+      if (options.recordHistory !== false) {
+        recordHistoryPath(result.path)
+      }
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -46,8 +94,35 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
   }
 
   useEffect(() => {
-    load(".")
-  }, [device])
+    setHistoryState({ items: ["."], index: 0 })
+    load(".", { recordHistory: false })
+  }, [device, targetType])
+
+  function goBack() {
+    if (historyState.index <= 0) return
+    const nextIndex = historyState.index - 1
+    setHistoryState((current) => ({ ...current, index: nextIndex }))
+    load(historyState.items[nextIndex], { recordHistory: false })
+  }
+
+  function goForward() {
+    if (historyState.index >= historyState.items.length - 1) return
+    const nextIndex = historyState.index + 1
+    setHistoryState((current) => ({ ...current, index: nextIndex }))
+    load(historyState.items[nextIndex], { recordHistory: false })
+  }
+
+  function toggleSort(key) {
+    setSort((current) => {
+      if (current.key !== key) return { key, direction: "asc" }
+      return { key, direction: current.direction === "asc" ? "desc" : "asc" }
+    })
+  }
+
+  function sortIcon(key) {
+    if (sort.key !== key) return null
+    return sort.direction === "asc" ? <ArrowUp size={13} aria-hidden="true" /> : <ArrowDown size={13} aria-hidden="true" />
+  }
 
   async function createFolder() {
     const name = window.prompt("Folder name")
@@ -135,7 +210,7 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
 
   async function pasteHere() {
     if (!clipboard) return
-    const selectedEntries = listing.entries.filter((entry) => selectedPaths.includes(entry.path))
+    const selectedEntries = sortedEntries.filter((entry) => selectedPaths.includes(entry.path))
     const selectedDirectory = selectedEntries.length === 1 && selectedEntries[0].type === "directory" ? selectedEntries[0] : null
     const pasteDestination = selectedDirectory ? selectedDirectory.path : path
     setBusy(true)
@@ -173,16 +248,18 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
   }
 
   function toggleSelectAll() {
-    if (selectedPaths.length === listing.entries.length) {
+    if (selectedPaths.length === sortedEntries.length) {
       setSelectedPaths([])
     } else {
-      setSelectedPaths(listing.entries.map((entry) => entry.path))
+      setSelectedPaths(sortedEntries.map((entry) => entry.path))
     }
   }
 
+  const sortedEntries = sortEntries(listing.entries, sort)
+  const crumbs = pathCrumbs(path)
   const selectedCount = selectedPaths.length
-  const allSelected = listing.entries.length > 0 && selectedCount === listing.entries.length
-  const selectedEntries = listing.entries.filter((entry) => selectedPaths.includes(entry.path))
+  const allSelected = sortedEntries.length > 0 && selectedCount === sortedEntries.length
+  const selectedEntries = sortedEntries.filter((entry) => selectedPaths.includes(entry.path))
   const pasteTarget = selectedEntries.length === 1 && selectedEntries[0].type === "directory" ? selectedEntries[0].name : "this folder"
 
   return (
@@ -190,9 +267,26 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
       <header className="flex flex-col gap-3 border-b border-line bg-panel px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-ink">{device.name} files</h2>
-          <p className="truncate text-xs text-muted">{path}</p>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted">
+            {crumbs.map((crumb, index) => (
+              <span className="flex min-w-0 items-center gap-1" key={crumb.path}>
+                {index > 0 && <span className="text-muted/70">/</span>}
+                <button className="max-w-[9rem] truncate rounded px-1 py-0.5 text-left hover:bg-surface hover:text-ink" onClick={() => load(crumb.path)} title={crumb.path}>
+                  {crumb.label}
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="flex gap-1">
+            <button className="btn-secondary px-2" onClick={goBack} disabled={busy || historyState.index <= 0} title="Back">
+              <ChevronLeft size={17} aria-hidden="true" />
+            </button>
+            <button className="btn-secondary px-2" onClick={goForward} disabled={busy || historyState.index >= historyState.items.length - 1} title="Forward">
+              <ChevronRight size={17} aria-hidden="true" />
+            </button>
+          </div>
           <button className="btn-secondary px-3" onClick={() => load(path)} disabled={busy} title="Refresh">
             <RefreshCw size={17} aria-hidden="true" />
             <span className="hidden sm:inline">Refresh</span>
@@ -254,17 +348,31 @@ export function FileExplorer({ device, targetType = "device", onClose, clipboard
         </div>
 
         <div className="m-3 overflow-hidden rounded-lg border border-line bg-panel sm:m-4">
-          {listing.entries.length > 0 && (
+          {sortedEntries.length > 0 && (
             <label className="flex items-center gap-3 border-b border-line px-4 py-3 text-sm text-muted">
               <input className="h-5 w-5 rounded border-line bg-surface accent-teal-400" type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
               Select all
             </label>
           )}
+          {sortedEntries.length > 0 && (
+            <div className="hidden border-b border-line bg-surface/60 px-4 py-2 text-xs font-semibold uppercase text-muted md:grid md:grid-cols-[minmax(0,1fr)_120px_180px_auto]">
+              <button className="flex items-center gap-1 text-left hover:text-ink" onClick={() => toggleSort("name")}>
+                Name {sortIcon("name")}
+              </button>
+              <button className="flex items-center justify-end gap-1 text-right hover:text-ink" onClick={() => toggleSort("size")}>
+                Size {sortIcon("size")}
+              </button>
+              <button className="flex items-center gap-1 text-left hover:text-ink" onClick={() => toggleSort("modified")}>
+                Modified {sortIcon("modified")}
+              </button>
+              <span className="text-right">Actions</span>
+            </div>
+          )}
           <button className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left text-sm text-ink hover:bg-surface" onClick={() => load(listing.parent)} disabled={path === "." || path === "/"}>
             <Folder size={18} aria-hidden="true" />
             ..
           </button>
-          {listing.entries.map((entry) => (
+          {sortedEntries.map((entry) => (
             <div key={entry.path} className={`grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_120px_180px_auto] ${selectedPaths.includes(entry.path) ? "bg-surface" : ""}`}>
               <div className="flex min-w-0 items-center gap-3">
                 <input className="h-5 w-5 shrink-0 rounded border-line bg-surface accent-teal-400" type="checkbox" checked={selectedPaths.includes(entry.path)} onChange={() => toggleSelection(entry)} onClick={(event) => event.stopPropagation()} />
