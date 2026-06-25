@@ -407,7 +407,12 @@ def copy_file_multistream(
             destination.close()
         return
 
-    destination.prepare_file(destination_path)
+    destination = TransferStore(destination_device)
+    try:
+        destination.prepare_file(destination_path)
+    finally:
+        destination.close()
+
     cancel_event = threading.Event()
     segment_size = (size + streams - 1) // streams
     segments = [
@@ -446,7 +451,11 @@ def copy_file_multistream(
             except BaseException:
                 cancel_event.set()
                 raise
-    destination.apply_meta(destination_path, source_meta)
+    destination = TransferStore(destination_device)
+    try:
+        destination.apply_meta(destination_path, source_meta)
+    finally:
+        destination.close()
 
 
 def transfer_file_paths(
