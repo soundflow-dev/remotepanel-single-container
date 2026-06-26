@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import io
 import posixpath
+import shlex
 import stat
 from datetime import datetime
 from urllib.parse import urlparse
 
+import paramiko
 from fastapi import HTTPException, status
 
 from app.database.models import Device
@@ -53,11 +55,31 @@ def initial_path_candidates(device: Device, sftp) -> list[str]:
     return list(dict.fromkeys(candidates))
 
 
+def initial_exec_path_candidates(device: Device) -> list[str]:
+    candidates: list[str] = []
+    configured = configured_start_path(device)
+    if configured:
+        candidates.append(configured)
+    candidates.extend([".", "/", "/config", "/homeassistant"])
+    return list(dict.fromkeys(candidates))
+
+
 def sftp_for_device(device: Device):
     if device.connection_type != "ssh_sftp":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File explorer is currently available for SFTP devices.")
     client = connect_ssh_device(device)
-    return client, client.open_sftp()
+    try:
+        return client, client.open_sftp()
+    except Exception:
+        client.close()
+        raise
+
+
+def run_ssh_command(client, command: str) -> tuple[int, str, str]:
+    stdin, stdout, stderr = client.exec_command(command, timeout=20)
+    stdin.close()
+    code = stdout.channel.recv_exit_status()
+    return code, stdout.read().decode("utf-8", errors="replace"), stderr.read().decode("utf-8", errors="replace")
 
 
 def entry_from_attr(path: str, attr) -> dict:
@@ -72,9 +94,64 @@ def entry_from_attr(path: str, attr) -> dict:
     }
 
 
+def entry_from_ls_line(path: str, line: str) -> dict | None:
+    parts = line.split()
+    if len(parts) < 9:
+        return None
+    permissions = parts[0]
+    name = " ".join(parts[8:])
+    if name in (".", ".."):
+        return None
+    if permissions.startswith("l") and " -> " in name:
+        name = name.split(" -> ", 1)[0]
+    try:
+        size = int(parts[4])
+    except ValueError:
+        size = 0
+    is_dir = permissions.startswith("d")
+    return {
+        "name": name,
+        "path": posixpath.join(path, name) if path not in ("", ".") else name,
+        "type": "directory" if is_dir else "file",
+        "size": size,
+        "modified_at": None,
+        "permissions": permissions,
+    }
+
+
+def list_sftp_directory_via_exec(device: Device, path: str | None) -> dict:
+    requested_path = normalize_path(path)
+    candidates = [requested_path] if requested_path != "." else initial_exec_path_candidates(device)
+    client = connect_ssh_device(device)
+    try:
+        errors: list[str] = []
+        for candidate in candidates:
+            command = f"LC_ALL=C ls -la {shlex.quote(candidate)}"
+            code, output, error = run_ssh_command(client, command)
+            if code != 0:
+                errors.append(f"{candidate}: {error.strip() or output.strip() or f'exit {code}'}")
+                continue
+            entries = []
+            for line in output.splitlines()[1:]:
+                entry = entry_from_ls_line(candidate, line)
+                if entry:
+                    entries.append(entry)
+            entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
+            return {"path": candidate, "parent": parent_path(candidate), "entries": entries}
+        detail = "SFTP is not available and SSH file listing failed."
+        if errors:
+            detail += " Tried " + "; ".join(errors)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    finally:
+        client.close()
+
+
 def list_sftp_directory(device: Device, path: str | None) -> dict:
     safe_path = normalize_path(path)
-    client, sftp = sftp_for_device(device)
+    try:
+        client, sftp = sftp_for_device(device)
+    except (paramiko.SSHException, EOFError, OSError):
+        return list_sftp_directory_via_exec(device, path)
     try:
         if safe_path == ".":
             entries = None
