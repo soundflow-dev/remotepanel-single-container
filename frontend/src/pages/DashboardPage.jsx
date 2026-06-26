@@ -87,6 +87,7 @@ export function DashboardPage() {
   const [filesTargetType, setFilesTargetType] = useState("device")
   const [sharesDevice, setSharesDevice] = useState(null)
   const [shareForm, setShareForm] = useState(emptyShareForm)
+  const [showShareForm, setShowShareForm] = useState(false)
   const [editingShare, setEditingShare] = useState(null)
   const [shareBusy, setShareBusy] = useState(false)
   const [fileClipboard, setFileClipboard] = useState(null)
@@ -293,6 +294,7 @@ export function DashboardPage() {
     setFilesDevice(null)
     setSharesDevice(device)
     setShareForm(emptyShareForm)
+    setShowShareForm(false)
     setEditingShare(null)
   }
 
@@ -300,6 +302,7 @@ export function DashboardPage() {
     setTerminalDevice(null)
     setFilesDevice(null)
     setSharesDevice(null)
+    setShowShareForm(false)
     setEditingShare(null)
     setShareForm(emptyShareForm)
   }
@@ -329,6 +332,13 @@ export function DashboardPage() {
     }
   }
 
+  function startCreateShare() {
+    setEditingShare(null)
+    setShareForm(emptyShareForm)
+    setShowShareForm(true)
+    setMessage("")
+  }
+
   function startEditShare(share) {
     setEditingShare(share)
     setShareForm({
@@ -341,12 +351,14 @@ export function DashboardPage() {
       password: "",
       active: share.active,
     })
+    setShowShareForm(true)
     setMessage(t("shares.secretsHidden"))
   }
 
   function cancelShareEdit() {
     setEditingShare(null)
     setShareForm(emptyShareForm)
+    setShowShareForm(false)
     setMessage("")
   }
 
@@ -382,6 +394,7 @@ export function DashboardPage() {
       }
       setShareForm(emptyShareForm)
       setEditingShare(null)
+      setShowShareForm(false)
       await loadDevices()
       const shares = await api.listShares(sharesDevice.id)
       setSharesDevice((current) => current ? { ...current, shares } : current)
@@ -408,6 +421,7 @@ export function DashboardPage() {
       if (editingShare?.id === shareDeleteTarget.id) {
         setEditingShare(null)
         setShareForm(emptyShareForm)
+        setShowShareForm(false)
       }
       setShareDeleteTarget(null)
     } catch (err) {
@@ -501,50 +515,59 @@ export function DashboardPage() {
           </button>
         </header>
         <div className="space-y-2 p-3">
-          <form className="grid gap-3 rounded border border-line bg-surface p-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={saveShare} noValidate>
-            <div>
-              <label className="label" htmlFor="share-name">{t("common.name")}</label>
-              <input className="field mt-1" id="share-name" name="name" value={shareForm.name} onChange={updateShare} required />
+          {!showShareForm && (
+            <div className="flex justify-end">
+              <button className="btn-primary" type="button" onClick={startCreateShare}>
+                <Plus size={17} aria-hidden="true" />
+                {t("shares.add")}
+              </button>
             </div>
-            <div>
-              <label className="label" htmlFor="share-type">{t("common.type")}</label>
-              <select className="field mt-1" id="share-type" name="connection_type" value={shareForm.connection_type} onChange={updateShare}>
-                <option value="smb">SMB</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="share-path">{t("shares.path")}</label>
-              <input className="field mt-1" id="share-path" name="connection_url" value={shareForm.connection_url} onChange={updateShare} placeholder={`smb://${device.host}/Share`} required />
-            </div>
-            <div>
-              <label className="label" htmlFor="share-port">{t("common.port")}</label>
-              <input className="field mt-1" id="share-port" name="port" type="number" min="1" max="65535" value={shareForm.port} onChange={updateShare} required />
-            </div>
-            {shareForm.connection_type === "smb" && (
-              <>
-                <div>
-                  <label className="label" htmlFor="share-user">{t("common.user")}</label>
-                  <input className="field mt-1" id="share-user" name="username" value={shareForm.username} onChange={updateShare} />
-                </div>
-                <div>
-                  <label className="label" htmlFor="share-password">{t("common.password")}</label>
-                  <input className="field mt-1" id="share-password" name="password" type="password" value={shareForm.password} onChange={updateShare} required={shareForm.auth_method === "password" && !editingShare} placeholder={editingShare ? t("dashboard.leavePassword") : ""} />
-                </div>
-              </>
-            )}
-            <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3">
-              <button className="btn-primary" disabled={shareBusy}>{shareBusy ? t("common.saving") : editingShare ? t("shares.save") : t("shares.add")}</button>
-              {editingShare && (
+          )}
+
+          {showShareForm && (
+            <form className="grid gap-3 rounded border border-line bg-surface p-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={saveShare} noValidate>
+              <div>
+                <label className="label" htmlFor="share-name">{t("common.name")}</label>
+                <input className="field mt-1" id="share-name" name="name" value={shareForm.name} onChange={updateShare} required />
+              </div>
+              <div>
+                <label className="label" htmlFor="share-type">{t("common.type")}</label>
+                <select className="field mt-1" id="share-type" name="connection_type" value={shareForm.connection_type} onChange={updateShare}>
+                  <option value="smb">SMB</option>
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="share-path">{t("shares.path")}</label>
+                <input className="field mt-1" id="share-path" name="connection_url" value={shareForm.connection_url} onChange={updateShare} placeholder={`smb://${device.host}/Share`} required />
+              </div>
+              <div>
+                <label className="label" htmlFor="share-port">{t("common.port")}</label>
+                <input className="field mt-1" id="share-port" name="port" type="number" min="1" max="65535" value={shareForm.port} onChange={updateShare} required />
+              </div>
+              {shareForm.connection_type === "smb" && (
                 <>
-                  <button type="button" className="btn-secondary" onClick={cancelShareEdit}>{t("common.cancel")}</button>
+                  <div>
+                    <label className="label" htmlFor="share-user">{t("common.user")}</label>
+                    <input className="field mt-1" id="share-user" name="username" value={shareForm.username} onChange={updateShare} />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="share-password">{t("common.password")}</label>
+                    <input className="field mt-1" id="share-password" name="password" type="password" value={shareForm.password} onChange={updateShare} required={shareForm.auth_method === "password" && !editingShare} placeholder={editingShare ? t("dashboard.leavePassword") : ""} />
+                  </div>
+                </>
+              )}
+              <div className="flex items-end gap-3 md:col-span-2 xl:col-span-3">
+                <button className="btn-primary" disabled={shareBusy}>{shareBusy ? t("common.saving") : editingShare ? t("shares.save") : t("shares.add")}</button>
+                <button type="button" className="btn-secondary" onClick={cancelShareEdit}>{t("common.cancel")}</button>
+                {editingShare && (
                   <button type="button" className="btn-danger md:ml-auto" onClick={() => removeShare(editingShare)}>
                     <Trash2 size={17} aria-hidden="true" />
                     {t("shares.deleteShare")}
                   </button>
-                </>
-              )}
-            </div>
-          </form>
+                )}
+              </div>
+            </form>
+          )}
 
           <div className="space-y-2">
             {shares.map((share) => (
