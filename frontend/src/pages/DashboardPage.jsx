@@ -780,17 +780,39 @@ export function DashboardPage() {
     )
   }
 
-  function StatBar({ label, value, detail }) {
+  function StatGauge({ label, value, detail, tone = "signal" }) {
+    const radius = 42
+    const circumference = 2 * Math.PI * radius
+    const strokeOffset = circumference - (circumference * value) / 100
+    const strokeClass = tone === "warning" ? "stroke-warning" : "stroke-signal"
     return (
-      <div className="rounded border border-line bg-panel p-3">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-xs font-semibold uppercase text-muted">{label}</span>
-          <span className="text-sm font-semibold text-ink">{value}%</span>
+      <div className="rounded border border-line bg-panel p-4">
+        <div className="flex items-center gap-4">
+          <div className="relative h-28 w-28 shrink-0">
+            <svg className="-rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+              <circle className="stroke-line/70" cx="50" cy="50" r={radius} fill="none" strokeWidth="9" />
+              <circle
+                className={strokeClass}
+                cx="50"
+                cy="50"
+                r={radius}
+                fill="none"
+                strokeLinecap="round"
+                strokeWidth="9"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeOffset}
+              />
+            </svg>
+            <div className="absolute inset-0 grid place-items-center">
+              <span className="text-2xl font-semibold text-ink">{value}%</span>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-muted">{label}</p>
+            {detail && <p className="mt-2 text-sm font-semibold text-ink">{detail}</p>}
+            <p className="mt-1 text-xs text-muted">{t("stats.used")}</p>
+          </div>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-line/60">
-          <div className="h-full rounded-full bg-signal" style={{ width: `${value}%` }} />
-        </div>
-        {detail && <p className="mt-2 text-xs text-muted">{detail}</p>}
       </div>
     )
   }
@@ -818,26 +840,35 @@ export function DashboardPage() {
           {statsLoading && <p className="rounded-md border border-line bg-surface px-3 py-2.5 text-sm text-muted">{t("stats.loading")}</p>}
           {statsData && (
             <>
-              <div className="grid gap-3 md:grid-cols-3">
-                <article className="rounded border border-line bg-panel p-3">
-                  <p className="text-xs font-semibold uppercase text-muted">CPU</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{statsData.cpu_cores ? t("stats.cpuCores", { count: statsData.cpu_cores }) : t("stats.unknown")}</p>
-                  <p className="mt-1 text-xs text-muted">{statsData.cpu_model || t("stats.unknown")}</p>
+              <div className="grid gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr]">
+                <article className="rounded border border-line bg-panel p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase text-muted">CPU</p>
+                      <p className="mt-2 text-2xl font-semibold text-ink">{statsData.cpu_cores ? t("stats.cpuCores", { count: statsData.cpu_cores }) : t("stats.unknown")}</p>
+                      <p className="mt-1 text-sm text-muted">{statsData.cpu_model || t("stats.unknown")}</p>
+                    </div>
+                    <BarChart3 className="shrink-0 text-signal" size={24} aria-hidden="true" />
+                  </div>
                 </article>
-                <article className="rounded border border-line bg-panel p-3">
+                <article className="rounded border border-line bg-panel p-4">
                   <p className="text-xs font-semibold uppercase text-muted">{t("stats.load")}</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{[statsData.load_1m, statsData.load_5m, statsData.load_15m].filter((value) => value != null).map((value) => value.toFixed(2)).join(" / ") || t("stats.unknown")}</p>
-                  <p className="mt-1 text-xs text-muted">1m / 5m / 15m</p>
+                  <p className="mt-2 text-2xl font-semibold text-ink">{[statsData.load_1m, statsData.load_5m, statsData.load_15m].filter((value) => value != null).map((value) => value.toFixed(2)).join(" / ") || t("stats.unknown")}</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px] font-semibold text-muted">
+                    <span className="rounded bg-surface px-2 py-1">1m</span>
+                    <span className="rounded bg-surface px-2 py-1">5m</span>
+                    <span className="rounded bg-surface px-2 py-1">15m</span>
+                  </div>
                 </article>
-                <article className="rounded border border-line bg-panel p-3">
+                <article className="rounded border border-line bg-panel p-4">
                   <p className="text-xs font-semibold uppercase text-muted">{t("stats.uptime")}</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{formatDuration(statsData.uptime_seconds) || t("stats.unknown")}</p>
-                  <p className="mt-1 text-xs text-muted">{statsDevice.name}</p>
+                  <p className="mt-2 text-2xl font-semibold text-ink">{formatDuration(statsData.uptime_seconds) || t("stats.unknown")}</p>
+                  <p className="mt-1 text-sm text-muted">{statsDevice.name}</p>
                 </article>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <StatBar label={t("stats.memory")} value={memoryPercent} detail={`${formatBytes(statsData.memory_used)} / ${formatBytes(statsData.memory_total)}`} />
-                <StatBar label={t("stats.disk", { mount: statsData.disk_mount || "/" })} value={diskPercent} detail={`${formatBytes(statsData.disk_used)} / ${formatBytes(statsData.disk_total)}`} />
+                <StatGauge label={t("stats.memory")} value={memoryPercent} detail={`${formatBytes(statsData.memory_used)} / ${formatBytes(statsData.memory_total)}`} />
+                <StatGauge label={t("stats.disk", { mount: statsData.disk_mount || "/" })} value={diskPercent} detail={`${formatBytes(statsData.disk_used)} / ${formatBytes(statsData.disk_total)}`} tone={diskPercent > 85 ? "warning" : "signal"} />
               </div>
             </>
           )}

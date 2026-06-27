@@ -290,24 +290,51 @@ def get_device_stats(device: Device) -> dict[str, int | float | str | None]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stats require SSH/SFTP access.")
 
     script = r"""
-cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)
-cpu_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "")
-read load_1m load_5m load_15m _ </proc/loadavg 2>/dev/null || true
-mem_total=$(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
-mem_available=$(awk '/MemAvailable/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
-if [ -z "$mem_available" ]; then
-  mem_available=$(awk '/MemFree/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
+system_name=$(uname -s 2>/dev/null || echo "")
+if [ "$system_name" = "Darwin" ]; then
+  cpu_model=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model 2>/dev/null || true)
+  cpu_cores=$(sysctl -n hw.ncpu 2>/dev/null || true)
+  set -- $(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}')
+  load_1m=$1
+  load_5m=$2
+  load_15m=$3
+  mem_total=$(sysctl -n hw.memsize 2>/dev/null || true)
+  page_size=$(pagesize 2>/dev/null || echo 4096)
+  vm_output=$(vm_stat 2>/dev/null || true)
+  free_pages=$(printf '%s\n' "$vm_output" | awk '/Pages free/ {gsub("\\.", "", $3); print $3}')
+  inactive_pages=$(printf '%s\n' "$vm_output" | awk '/Pages inactive/ {gsub("\\.", "", $3); print $3}')
+  speculative_pages=$(printf '%s\n' "$vm_output" | awk '/Pages speculative/ {gsub("\\.", "", $3); print $3}')
+  file_pages=$(printf '%s\n' "$vm_output" | awk '/File-backed pages/ {gsub("\\.", "", $3); print $3}')
+  reusable_pages=$(( ${free_pages:-0} + ${inactive_pages:-0} + ${speculative_pages:-0} + ${file_pages:-0} ))
+  memory_available=$(( reusable_pages * page_size ))
+  boot_time=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9][0-9]*\).*/\1/p')
+  now_time=$(date +%s 2>/dev/null || echo "")
+  if [ -n "$boot_time" ] && [ -n "$now_time" ]; then
+    uptime_seconds=$(( now_time - boot_time ))
+  fi
+  df -Pk / 2>/dev/null | awk 'NR==2 {print "disk_total="$2 * 1024; print "disk_used="$3 * 1024; print "disk_available="$4 * 1024; print "disk_mount="$6}' > /tmp/remotepanel_stats_df_$$
+else
+  cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)
+  cpu_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "")
+  read load_1m load_5m load_15m _ </proc/loadavg 2>/dev/null || true
+  mem_total=$(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
+  memory_available=$(awk '/MemAvailable/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
+  if [ -z "$memory_available" ]; then
+    memory_available=$(awk '/MemFree/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
+  fi
+  uptime_seconds=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || true)
+  df -P -B1 / 2>/dev/null | awk 'NR==2 {print "disk_total="$2; print "disk_used="$3; print "disk_available="$4; print "disk_mount="$6}' > /tmp/remotepanel_stats_df_$$
 fi
-uptime_seconds=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || true)
 printf 'cpu_model=%s\n' "$cpu_model"
 printf 'cpu_cores=%s\n' "$cpu_cores"
 printf 'load_1m=%s\n' "$load_1m"
 printf 'load_5m=%s\n' "$load_5m"
 printf 'load_15m=%s\n' "$load_15m"
 printf 'memory_total=%s\n' "$mem_total"
-printf 'memory_available=%s\n' "$mem_available"
+printf 'memory_available=%s\n' "$memory_available"
 printf 'uptime_seconds=%s\n' "$uptime_seconds"
-df -P -B1 / 2>/dev/null | awk 'NR==2 {print "disk_total="$2; print "disk_used="$3; print "disk_available="$4; print "disk_mount="$6}'
+cat /tmp/remotepanel_stats_df_$$ 2>/dev/null || true
+rm -f /tmp/remotepanel_stats_df_$$ 2>/dev/null || true
 """
     client = None
     try:

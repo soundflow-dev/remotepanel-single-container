@@ -165,6 +165,7 @@ const translations = {
       uptime: "Uptime",
       memory: "Memory",
       disk: "Disk {mount}",
+      used: "used",
       unknown: "Unknown",
     },
     files: {
@@ -364,6 +365,7 @@ const translations = {
       uptime: "Tempo ligado",
       memory: "Memória",
       disk: "Disco {mount}",
+      used: "usado",
       unknown: "Desconhecido",
     },
     files: {
@@ -563,6 +565,7 @@ const translations = {
       uptime: "Disponibilité",
       memory: "Mémoire",
       disk: "Disque {mount}",
+      used: "utilisé",
       unknown: "Inconnu",
     },
     files: {
@@ -762,6 +765,7 @@ const translations = {
       uptime: "Laufzeit",
       memory: "Speicher",
       disk: "Datenträger {mount}",
+      used: "belegt",
       unknown: "Unbekannt",
     },
     files: {
@@ -961,6 +965,7 @@ const translations = {
       uptime: "Tiempo activo",
       memory: "Memoria",
       disk: "Disco {mount}",
+      used: "usado",
       unknown: "Desconocido",
     },
     files: {
@@ -1160,6 +1165,7 @@ const translations = {
       uptime: "运行时间",
       memory: "内存",
       disk: "磁盘 {mount}",
+      used: "已使用",
       unknown: "未知",
     },
     files: {
