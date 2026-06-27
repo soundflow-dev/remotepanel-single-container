@@ -4,6 +4,8 @@ One panel, all your remote systems.
 
 Self-hosted homelab control panel for managing devices, SSH/SFTP connections, file access, and remote actions from one web UI.
 
+This repository is the single-container variant of RemotePanel. The React frontend is built during the Docker image build and served by the FastAPI backend, so Docker Compose starts one `remotepanel` container instead of separate frontend and backend containers.
+
 This repository is an early MVP scaffold. The first boot starts empty and shows the initial administrator setup screen.
 
 ## Current MVP
@@ -11,7 +13,7 @@ This repository is an early MVP scaffold. The first boot starts empty and shows 
 - FastAPI backend
 - React + Tailwind frontend
 - SQLite stored under `/data`
-- Docker Compose deployment
+- Single-container Docker Compose deployment
 - Initial admin setup lock
 - Argon2id password hashing
 - httpOnly cookie sessions
@@ -124,6 +126,8 @@ docker compose up -d --build
 ```
 
 The app is available on `http://SERVER_IP:8080` unless you change `APP_PORT`.
+
+This variant runs as a single Docker container named `remotepanel`.
 
 Example `.env`:
 

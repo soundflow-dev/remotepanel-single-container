@@ -1,7 +1,7 @@
 services:
-  backend:
+  remotepanel:
     build:
-      context: ./backend
+      context: .
     environment:
       DATA_DIR: /data
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
@@ -15,15 +15,8 @@ services:
       SMB_AUTH_PROTOCOL: ${SMB_AUTH_PROTOCOL:-negotiate}
     volumes:
       - remotepanel-data:/data
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
     ports:
-      - "${APP_PORT:-8080}:80"
-    depends_on:
-      - backend
+      - "${APP_PORT:-8080}:8000"
     restart: unless-stopped
 
 volumes:
