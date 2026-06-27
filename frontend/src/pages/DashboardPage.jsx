@@ -79,6 +79,11 @@ function percent(used, total) {
   return Math.min(100, Math.round((used / total) * 100))
 }
 
+function roundedPercent(value) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
 export function DashboardPage() {
   const { t } = useI18n()
   const [devices, setDevices] = useState([])
@@ -821,6 +826,8 @@ export function DashboardPage() {
     if (!statsDevice) return null
     const memoryPercent = percent(statsData?.memory_used, statsData?.memory_total)
     const diskPercent = percent(statsData?.disk_used, statsData?.disk_total)
+    const cpuPercent = roundedPercent(statsData?.cpu_usage_percent)
+    const coreValues = statsData?.cpu_core_usage_percent?.length ? statsData.cpu_core_usage_percent.map(roundedPercent) : []
     return (
       <section className="rounded-md border border-line bg-panel">
         <header className="flex flex-col gap-3 border-b border-line px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
@@ -840,7 +847,7 @@ export function DashboardPage() {
           {statsLoading && <p className="rounded-md border border-line bg-surface px-3 py-2.5 text-sm text-muted">{t("stats.loading")}</p>}
           {statsData && (
             <>
-              <div className="grid gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr]">
+              <div className="grid items-start gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr]">
                 <article className="rounded border border-line bg-panel p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -852,12 +859,28 @@ export function DashboardPage() {
                   </div>
                 </article>
                 <article className="rounded border border-line bg-panel p-4">
-                  <p className="text-xs font-semibold uppercase text-muted">{t("stats.load")}</p>
-                  <p className="mt-2 text-2xl font-semibold text-ink">{[statsData.load_1m, statsData.load_5m, statsData.load_15m].filter((value) => value != null).map((value) => value.toFixed(2)).join(" / ") || t("stats.unknown")}</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px] font-semibold text-muted">
-                    <span className="rounded bg-surface px-2 py-1">1m</span>
-                    <span className="rounded bg-surface px-2 py-1">5m</span>
-                    <span className="rounded bg-surface px-2 py-1">15m</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted">{t("stats.cpuUsage")}</p>
+                      <p className="mt-2 text-3xl font-semibold text-ink">{statsData.cpu_usage_percent != null ? `${cpuPercent}%` : t("stats.unknown")}</p>
+                      <p className="mt-1 text-xs text-muted">{t("stats.currentUsage")}</p>
+                    </div>
+                    <div className="rounded bg-signal/10 px-2 py-1 text-xs font-semibold text-signal">{t("stats.live")}</div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {coreValues.length > 0 ? coreValues.map((value, index) => (
+                      <div key={index} className="min-w-0">
+                        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase text-muted">
+                          <span>{t("stats.core", { number: index + 1 })}</span>
+                          <span>{value}%</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-line/60">
+                          <div className="h-full rounded-full bg-signal" style={{ width: `${value}%` }} />
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="col-span-2 text-xs text-muted">{t("stats.coreUnavailable")}</p>
+                    )}
                   </div>
                 </article>
                 <article className="rounded border border-line bg-panel p-4">

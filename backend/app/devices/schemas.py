@@ -90,6 +90,8 @@ class DeviceTestResponse(BaseModel):
 class DeviceStatsResponse(BaseModel):
     cpu_model: str | None = None
     cpu_cores: int | None = None
+    cpu_usage_percent: float | None = None
+    cpu_core_usage_percent: list[float] = Field(default_factory=list)
     load_1m: float | None = None
     load_5m: float | None = None
     load_15m: float | None = None

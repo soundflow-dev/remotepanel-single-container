@@ -294,6 +294,8 @@ system_name=$(uname -s 2>/dev/null || echo "")
 if [ "$system_name" = "Darwin" ]; then
   cpu_model=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model 2>/dev/null || true)
   cpu_cores=$(sysctl -n hw.ncpu 2>/dev/null || true)
+  cpu_usage_percent=$(ps -A -o %cpu 2>/dev/null | awk -v cores="${cpu_cores:-1}" 'NR > 1 {total += $1} END {if (cores > 0) printf "%.1f", total / cores; else print ""}')
+  cpu_core_usage_percent=$(awk -v usage="${cpu_usage_percent:-0}" -v cores="${cpu_cores:-0}" 'BEGIN {for (i = 1; i <= cores; i++) printf "%s%.1f", (i == 1 ? "" : ","), usage}')
   set -- $(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}')
   load_1m=$1
   load_5m=$2
@@ -316,6 +318,26 @@ if [ "$system_name" = "Darwin" ]; then
 else
   cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)
   cpu_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "")
+  cpu_sample_1=$(awk '/^cpu/ {idle=$5; total=0; for (i=2; i<=NF; i++) total += $i; print $1 ":" total ":" idle}' /proc/stat 2>/dev/null)
+  sleep 0.25
+  cpu_sample_2=$(awk '/^cpu/ {idle=$5; total=0; for (i=2; i<=NF; i++) total += $i; print $1 ":" total ":" idle}' /proc/stat 2>/dev/null)
+  cpu_usage_percent=$(printf '%s\n---\n%s\n' "$cpu_sample_1" "$cpu_sample_2" | awk -F: '
+    /^---$/ {second=1; next}
+    !second {total[$1]=$2; idle[$1]=$3; next}
+    second && $1=="cpu" {
+      total_delta=$2-total[$1]; idle_delta=$3-idle[$1];
+      if (total_delta > 0) printf "%.1f", 100 * (total_delta - idle_delta) / total_delta;
+    }')
+  cpu_core_usage_percent=$(printf '%s\n---\n%s\n' "$cpu_sample_1" "$cpu_sample_2" | awk -F: '
+    /^---$/ {second=1; next}
+    !second {total[$1]=$2; idle[$1]=$3; next}
+    second && $1 ~ /^cpu[0-9]+$/ {
+      total_delta=$2-total[$1]; idle_delta=$3-idle[$1];
+      if (total_delta > 0) {
+        value=100 * (total_delta - idle_delta) / total_delta;
+        printf "%s%.1f", (seen++ ? "," : ""), value;
+      }
+    }')
   read load_1m load_5m load_15m _ </proc/loadavg 2>/dev/null || true
   mem_total=$(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
   memory_available=$(awk '/MemAvailable/ {print $2 * 1024}' /proc/meminfo 2>/dev/null || true)
@@ -327,6 +349,8 @@ else
 fi
 printf 'cpu_model=%s\n' "$cpu_model"
 printf 'cpu_cores=%s\n' "$cpu_cores"
+printf 'cpu_usage_percent=%s\n' "$cpu_usage_percent"
+printf 'cpu_core_usage_percent=%s\n' "$cpu_core_usage_percent"
 printf 'load_1m=%s\n' "$load_1m"
 printf 'load_5m=%s\n' "$load_5m"
 printf 'load_15m=%s\n' "$load_15m"
@@ -368,6 +392,8 @@ rm -f /tmp/remotepanel_stats_df_$$ 2>/dev/null || true
     return {
         "cpu_model": values.get("cpu_model") or None,
         "cpu_cores": _parse_int(values.get("cpu_cores")),
+        "cpu_usage_percent": _parse_float(values.get("cpu_usage_percent")),
+        "cpu_core_usage_percent": [_parse_float(value) or 0 for value in values.get("cpu_core_usage_percent", "").split(",") if value],
         "load_1m": _parse_float(values.get("load_1m")),
         "load_5m": _parse_float(values.get("load_5m")),
         "load_15m": _parse_float(values.get("load_15m")),
