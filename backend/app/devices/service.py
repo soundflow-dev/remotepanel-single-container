@@ -239,8 +239,8 @@ def run_device_power_action(device: Device, action: str) -> tuple[bool, str]:
     sudo_password = credentials.get("password") if device.auth_method == "password" else None
     sudo_prefix = "sudo -S -p ''" if sudo_password else "sudo -n"
     commands = {
-        "reboot": f"{sudo_prefix} /sbin/reboot || {sudo_prefix} reboot || /sbin/reboot || reboot",
-        "shutdown": f"{sudo_prefix} /sbin/poweroff || {sudo_prefix} poweroff || {sudo_prefix} shutdown -h now || /sbin/poweroff || poweroff || shutdown -h now",
+        "reboot": f"(command -v ha >/dev/null 2>&1 && ha host reboot) || {sudo_prefix} /sbin/reboot || {sudo_prefix} reboot || /sbin/reboot || reboot",
+        "shutdown": f"(command -v ha >/dev/null 2>&1 && ha host shutdown) || {sudo_prefix} /sbin/poweroff || {sudo_prefix} poweroff || {sudo_prefix} shutdown -h now || /sbin/poweroff || poweroff || shutdown -h now",
     }
     labels = {
         "reboot": "Reboot",
