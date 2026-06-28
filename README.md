@@ -20,9 +20,13 @@ RemotePanel runs as one Docker app: the React frontend is built into the image a
 | --- | --- |
 | ![Stats](docs/screenshots/stats.png) | ![Add a share](docs/screenshots/add-a-share.png) |
 
-| Power Actions | Login |
+| Power Actions | First Setup |
 | --- | --- |
-| ![Power actions](docs/screenshots/power-actions.png) | ![Login](docs/screenshots/login.png) |
+| ![Power actions](docs/screenshots/power-actions.png) | ![Initial administrator setup](docs/screenshots/first-login-create-administrator.png) |
+
+| Login |
+| --- |
+| ![Login](docs/screenshots/login.png) |
 
 ## Features
 
