@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Activity, BarChart3, FolderOpen, Pencil, Plus, Power, PowerOff, RotateCcw, Server, Terminal, Trash2, X, Zap } from "lucide-react"
 
 import { api } from "../api/client"
@@ -84,7 +84,7 @@ function roundedPercent(value) {
   return Math.min(100, Math.max(0, Math.round(value)))
 }
 
-export function DashboardPage() {
+export function DashboardPage({ setTopAction }) {
   const { t } = useI18n()
   const [devices, setDevices] = useState([])
   const [form, setForm] = useState(emptyForm)
@@ -179,12 +179,23 @@ export function DashboardPage() {
     setShareForm({ ...shareForm, [name]: type === "checkbox" ? checked : value })
   }
 
-  function startCreate() {
+  const startCreate = useCallback(() => {
     setEditingDevice(null)
     setForm(emptyForm)
     setShowForm((value) => !value)
     setMessage("")
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!setTopAction) return undefined
+    setTopAction(
+      <button className="btn-primary hidden sm:inline-flex" onClick={startCreate}>
+        <Plus size={18} aria-hidden="true" />
+        {t("dashboard.addMachine")}
+      </button>,
+    )
+    return () => setTopAction(null)
+  }, [setTopAction, startCreate, t])
 
   function startEdit(device) {
     setEditingDevice(device)
@@ -921,17 +932,11 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-ink sm:text-2xl">{t("dashboard.devices")}</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">{t("dashboard.intro")}</p>
-        </div>
-        <button className="btn-primary w-full sm:w-auto" onClick={startCreate}>
-          <Plus size={18} aria-hidden="true" />
-          {t("dashboard.addMachine")}
-        </button>
-      </section>
+    <div className="space-y-3">
+      <button className="btn-primary w-full sm:hidden" onClick={startCreate}>
+        <Plus size={18} aria-hidden="true" />
+        {t("dashboard.addMachine")}
+      </button>
 
       {message && <p className="rounded-md border border-line bg-panel px-3 py-2.5 text-sm text-ink">{message}</p>}
 

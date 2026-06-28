@@ -5,7 +5,7 @@ import { BrandMark } from "./BrandMark"
 import { LanguageSwitcher } from "./LanguageSwitcher"
 import { ThemeSwitcher } from "./ThemeSwitcher"
 
-export function Shell({ user, onLogout, children }) {
+export function Shell({ user, onLogout, topAction, children }) {
   const { t } = useI18n()
 
   return (
@@ -18,6 +18,7 @@ export function Shell({ user, onLogout, children }) {
               <span className="hidden max-w-32 truncate text-xs font-semibold text-muted md:inline">{user?.name}</span>
               <LanguageSwitcher compact />
               <ThemeSwitcher />
+              {topAction}
               <button className="btn-secondary px-3" onClick={onLogout} title={t("logout")}>
                 <LogOut size={17} aria-hidden="true" />
                 <span className="hidden sm:inline">{t("logout")}</span>
@@ -25,7 +26,7 @@ export function Shell({ user, onLogout, children }) {
             </div>
           </div>
         </header>
-        <main className="px-3 py-4 sm:px-4 lg:px-5">{children}</main>
+        <main className="px-3 py-2 sm:px-4 lg:px-5">{children}</main>
       </div>
     </div>
   )
