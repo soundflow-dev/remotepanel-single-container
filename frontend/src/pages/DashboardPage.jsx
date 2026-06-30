@@ -558,7 +558,7 @@ export function DashboardPage({ setTopAction }) {
   function TransferJobsPanel() {
     if (transferJobs.length === 0) return null
     return (
-      <section className="rounded-md border border-line bg-panel p-3">
+      <aside className="rounded-md border border-line bg-panel p-3 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100vh-5.25rem)] lg:overflow-auto">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <Activity className="shrink-0 text-signal" size={18} aria-hidden="true" />
@@ -567,7 +567,7 @@ export function DashboardPage({ setTopAction }) {
           <button className="btn-secondary min-h-9 px-3" onClick={loadTransferJobs}>{t("common.refresh")}</button>
         </div>
         <div className="space-y-2">
-          {transferJobs.slice(0, 5).map((job) => {
+          {transferJobs.map((job) => {
             const progress = jobProgress(job)
             const verb = job.action === "move" ? t("common.move") : t("common.copy")
             const speed = job.status === "completed" ? averageJobSpeed(job) : job.speed_bytes_per_second
@@ -577,18 +577,18 @@ export function DashboardPage({ setTopAction }) {
             const itemPlural = plural(job.source_paths.length)
             return (
               <article key={job.id} className="rounded border border-line bg-panel p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">
+                    <p className="text-sm font-semibold leading-snug text-ink">
                       {t("transfers.jobTitle", { verb, count: job.source_paths.length, plural: itemPlural, source: job.source_device_name, destination: job.destination_device_name })}
                     </p>
-                    <p className="mt-1 truncate text-xs text-muted">
+                    <p className="mt-1 break-words text-xs leading-relaxed text-muted">
                       {job.status === "failed" || job.status === "cancelled"
-                        ? job.error
+                        ? job.error || t(`transfers.status.${job.status}`)
                         : `${formatBytes(job.transferred_bytes)} / ${formatBytes(job.total_bytes)} · ${speed ? formatSpeed(speed) : t("transfers.measuringSpeed")}${eta ? ` · ${t("transfers.eta", { value: eta })}` : ""} · ${t("transfers.files", { copied: job.copied_files || 0, total: job.total_files || 0 })}`}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded px-2 py-1 text-xs font-semibold ${job.status === "completed" ? "bg-signal/15 text-signal" : job.status === "failed" || job.status === "cancelled" ? "bg-red-500/10 text-red-600" : "bg-surface text-muted"}`}>
                       {t(`transfers.status.${job.status}`)}
                     </span>
@@ -598,8 +598,9 @@ export function DashboardPage({ setTopAction }) {
                       </button>
                     )}
                     {canDismiss && (
-                      <button className="btn-secondary min-h-9 px-2" onClick={() => dismissTransferJob(job)} title={t("transfers.hide")}>
+                      <button className="btn-secondary min-h-9 px-3 text-xs" onClick={() => dismissTransferJob(job)} title={t("transfers.hide")}>
                         <X size={15} aria-hidden="true" />
+                        {t("common.close")}
                       </button>
                     )}
                   </div>
@@ -611,7 +612,7 @@ export function DashboardPage({ setTopAction }) {
             )
           })}
         </div>
-      </section>
+      </aside>
     )
   }
 
@@ -940,8 +941,6 @@ export function DashboardPage({ setTopAction }) {
 
       {message && <p className="rounded-md border border-line bg-panel px-3 py-2.5 text-sm text-ink">{message}</p>}
 
-      <TransferJobsPanel />
-
       {showForm && (
         <section className="rounded-md border border-line bg-panel p-3">
           <h3 className="mb-4 text-lg font-semibold text-ink">{editingDevice ? t("dashboard.editMachine") : t("dashboard.newMachine")}</h3>
@@ -1040,7 +1039,7 @@ export function DashboardPage({ setTopAction }) {
           </div>
         </section>
       ) : (
-        <section className="grid gap-3 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section className={`grid gap-3 ${transferJobs.length > 0 ? "lg:grid-cols-[300px_minmax(0,1fr)_320px] xl:grid-cols-[320px_minmax(0,1fr)_360px]" : "lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]"}`}>
           <aside
             ref={deviceListRef}
             onScroll={(event) => {
@@ -1081,6 +1080,8 @@ export function DashboardPage({ setTopAction }) {
               </section>
             )}
           </div>
+
+          <TransferJobsPanel />
         </section>
       )}
       {shareDeleteTarget && (
