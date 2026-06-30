@@ -256,8 +256,6 @@ class TransferStore:
                         progress(len(chunk))
             return
         with self.sftp.open(safe_path, "r+b") as destination_file:
-            if hasattr(destination_file, "set_pipelined"):
-                destination_file.set_pipelined(True)
             destination_file.seek(offset)
             for chunk in chunks:
                 if should_cancel and should_cancel():
@@ -299,8 +297,6 @@ class TransferStore:
                         progress(len(chunk))
         else:
             with self.sftp.open(safe_path, "wb") as destination_file:
-                if hasattr(destination_file, "set_pipelined"):
-                    destination_file.set_pipelined(True)
                 for chunk in chunks:
                     if should_cancel and should_cancel():
                         raise TransferCancelled("Transfer cancelled.")
