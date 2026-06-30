@@ -572,8 +572,8 @@ export function DashboardPage({ setTopAction }) {
             const verb = job.action === "move" ? t("common.move") : t("common.copy")
             const speed = job.status === "completed" ? averageJobSpeed(job) : job.speed_bytes_per_second
             const eta = jobEta(job, speed)
-            const canCancel = ["pending", "running", "cancelling"].includes(job.status)
-            const canDismiss = ["completed", "failed", "cancelled"].includes(job.status)
+            const canCancel = ["pending", "running"].includes(job.status)
+            const canDismiss = ["completed", "failed", "cancelled", "cancelling"].includes(job.status)
             const itemPlural = plural(job.source_paths.length)
             return (
               <article key={job.id} className="rounded border border-line bg-panel p-3">
