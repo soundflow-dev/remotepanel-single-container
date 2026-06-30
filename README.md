@@ -323,6 +323,36 @@ The defaults are tuned to keep memory usage reasonable during very large transfe
 
 For trusted homelab networks, `SMB_REQUIRE_SIGNING=false` may improve SMB speed if your NAS allows unsigned SMB.
 
+### Large Transfers and Memory on Unraid
+
+During very large transfers, Unraid or `docker stats` may show high Docker memory usage. This can include kernel/container accounting and I/O-related memory, so it does not always mean the RemotePanel Python process is leaking memory.
+
+The most useful host-side value is `available`:
+
+```bash
+free -h
+```
+
+If `available` remains several GB, the server still has usable memory headroom even if Docker memory looks high.
+
+To inspect the RemotePanel container memory breakdown:
+
+```bash
+docker exec remotepanel sh -c "cat /sys/fs/cgroup/memory.stat 2>/dev/null | egrep 'anon|file|kernel|slab'"
+```
+
+As a rule of thumb:
+
+- high `anon` usually means real process memory
+- high `file` usually means file/cache related memory
+- low `anon` with healthy `available` usually means the system is not under dangerous memory pressure
+
+For live monitoring during a big transfer:
+
+```bash
+watch -n 5 "free -h && echo && docker stats --no-stream remotepanel"
+```
+
 ## Development
 
 Backend:
