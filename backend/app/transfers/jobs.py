@@ -3,7 +3,9 @@ from __future__ import annotations
 import ctypes
 import gc
 import json
+import os
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -17,6 +19,26 @@ from app.transfers.files import TransferCancelled, measure_transfer_paths, trans
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 DISMISSABLE_STATUSES = TERMINAL_STATUSES | {"cancelling"}
 PROGRESS_COMMIT_BYTES = 16 * 1024 * 1024
+
+
+def _positive_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return min(max(value, minimum), maximum)
+
+
+def _positive_float_env(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return min(max(value, minimum), maximum)
+
+
+TRANSFER_MEMORY_TRIM_BYTES = _positive_int_env("TRANSFER_MEMORY_TRIM_BYTES", 50 * 1024 * 1024 * 1024, 0, 1024 * 1024 * 1024 * 1024)
+TRANSFER_MEMORY_TRIM_PAUSE_SECONDS = _positive_float_env("TRANSFER_MEMORY_TRIM_PAUSE_SECONDS", 1.0, 0.0, 30.0)
 
 
 @dataclass(frozen=True)
@@ -230,6 +252,7 @@ def run_transfer_job(job_id: int) -> None:
     transferred_bytes = 0
     last_speed_sample_bytes = 0
     last_speed_sample_at: datetime | None = None
+    next_memory_trim_at = TRANSFER_MEMORY_TRIM_BYTES
     progress_lock = threading.Lock()
     try:
         if context.status == "cancelling":
@@ -249,7 +272,8 @@ def run_transfer_job(job_id: int) -> None:
         _update_job(job_id, total_bytes=total_bytes, total_files=total_files)
 
         def progress(bytes_written: int) -> None:
-            nonlocal last_speed_sample_at, last_speed_sample_bytes, transferred_bytes, transferred_since_commit
+            nonlocal last_speed_sample_at, last_speed_sample_bytes, next_memory_trim_at, transferred_bytes, transferred_since_commit
+            should_release_memory = False
             with progress_lock:
                 transferred_bytes += bytes_written
                 transferred_since_commit += bytes_written
@@ -270,6 +294,14 @@ def run_transfer_job(job_id: int) -> None:
                         speed_bytes_per_second=speed_bytes_per_second,
                         last_progress_at=now,
                     )
+                if TRANSFER_MEMORY_TRIM_BYTES and transferred_bytes >= next_memory_trim_at:
+                    while next_memory_trim_at <= transferred_bytes:
+                        next_memory_trim_at += TRANSFER_MEMORY_TRIM_BYTES
+                    should_release_memory = True
+            if should_release_memory:
+                _release_process_memory()
+                if TRANSFER_MEMORY_TRIM_PAUSE_SECONDS:
+                    time.sleep(TRANSFER_MEMORY_TRIM_PAUSE_SECONDS)
 
         def should_cancel() -> bool:
             return _job_status(job_id) == "cancelling"
