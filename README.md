@@ -339,7 +339,7 @@ Recommended transfer profiles:
 
 The total transfer size is not the only factor. A 600 GB transfer over 1 Gbps usually puts much less pressure on memory than the same transfer over multi-Gbps networking, because fewer buffers are active at the same time.
 
-`TRANSFER_MEMORY_TRIM_BYTES` makes RemotePanel pause briefly and ask Python/Linux to release unused memory every N transferred bytes. The default is 10 GiB. Set it to `0` to disable it, or lower it if your server has limited RAM. `TRANSFER_MEMORY_TRIM_PAUSE_SECONDS` controls the short pause after each trim.
+`TRANSFER_MEMORY_TRIM_BYTES` makes RemotePanel pause briefly and ask Python/Linux to release unused memory every N transferred bytes across all running transfers. The default is 10 GiB globally, not 10 GiB per individual transfer. Set it to `0` to disable it, or lower it if your server has limited RAM. `TRANSFER_MEMORY_TRIM_PAUSE_SECONDS` controls the short pause after each trim.
 
 For trusted homelab networks, `SMB_REQUIRE_SIGNING=false` may improve SMB speed if your NAS allows unsigned SMB.
 
