@@ -39,7 +39,11 @@ def _positive_float_env(name: str, default: float, minimum: float, maximum: floa
 
 TRANSFER_MEMORY_TRIM_BYTES = _positive_int_env("TRANSFER_MEMORY_TRIM_BYTES", 10 * 1024 * 1024 * 1024, 0, 1024 * 1024 * 1024 * 1024)
 TRANSFER_MEMORY_TRIM_PAUSE_SECONDS = _positive_float_env("TRANSFER_MEMORY_TRIM_PAUSE_SECONDS", 1.0, 0.0, 30.0)
+TRANSFER_MEMORY_DEEP_TRIM_BYTES = _positive_int_env("TRANSFER_MEMORY_DEEP_TRIM_BYTES", 100 * 1024 * 1024 * 1024, 0, 1024 * 1024 * 1024 * 1024)
+TRANSFER_MEMORY_DEEP_TRIM_PAUSE_SECONDS = _positive_float_env("TRANSFER_MEMORY_DEEP_TRIM_PAUSE_SECONDS", 5.0, 0.0, 60.0)
+TRANSFER_MEMORY_DEEP_TRIM_PASSES = _positive_int_env("TRANSFER_MEMORY_DEEP_TRIM_PASSES", 3, 1, 10)
 _memory_trim_bytes_since_release = 0
+_memory_deep_trim_bytes_since_release = 0
 _memory_trim_progress_lock = threading.Lock()
 _memory_trim_run_lock = threading.Lock()
 
@@ -247,23 +251,31 @@ def _release_process_memory() -> None:
         pass
 
 
-def _should_release_process_memory(bytes_written: int) -> bool:
-    global _memory_trim_bytes_since_release
-    if not TRANSFER_MEMORY_TRIM_BYTES:
-        return False
+def _next_memory_release_kind(bytes_written: int) -> str | None:
+    global _memory_deep_trim_bytes_since_release, _memory_trim_bytes_since_release
     with _memory_trim_progress_lock:
-        _memory_trim_bytes_since_release += bytes_written
-        if _memory_trim_bytes_since_release < TRANSFER_MEMORY_TRIM_BYTES:
-            return False
-        _memory_trim_bytes_since_release %= TRANSFER_MEMORY_TRIM_BYTES
-        return True
+        release_kind = None
+        if TRANSFER_MEMORY_TRIM_BYTES:
+            _memory_trim_bytes_since_release += bytes_written
+            if _memory_trim_bytes_since_release >= TRANSFER_MEMORY_TRIM_BYTES:
+                _memory_trim_bytes_since_release %= TRANSFER_MEMORY_TRIM_BYTES
+                release_kind = "regular"
+        if TRANSFER_MEMORY_DEEP_TRIM_BYTES:
+            _memory_deep_trim_bytes_since_release += bytes_written
+            if _memory_deep_trim_bytes_since_release >= TRANSFER_MEMORY_DEEP_TRIM_BYTES:
+                _memory_deep_trim_bytes_since_release %= TRANSFER_MEMORY_DEEP_TRIM_BYTES
+                release_kind = "deep"
+        return release_kind
 
 
-def _release_process_memory_with_pause() -> None:
+def _release_process_memory_with_pause(release_kind: str) -> None:
+    passes = TRANSFER_MEMORY_DEEP_TRIM_PASSES if release_kind == "deep" else 1
+    pause_seconds = TRANSFER_MEMORY_DEEP_TRIM_PAUSE_SECONDS if release_kind == "deep" else TRANSFER_MEMORY_TRIM_PAUSE_SECONDS
     with _memory_trim_run_lock:
-        _release_process_memory()
-        if TRANSFER_MEMORY_TRIM_PAUSE_SECONDS:
-            time.sleep(TRANSFER_MEMORY_TRIM_PAUSE_SECONDS)
+        for _ in range(passes):
+            _release_process_memory()
+        if pause_seconds:
+            time.sleep(pause_seconds)
 
 
 def run_transfer_job(job_id: int) -> None:
@@ -314,8 +326,9 @@ def run_transfer_job(job_id: int) -> None:
                         speed_bytes_per_second=speed_bytes_per_second,
                         last_progress_at=now,
                     )
-            if _should_release_process_memory(bytes_written):
-                _release_process_memory_with_pause()
+            release_kind = _next_memory_release_kind(bytes_written)
+            if release_kind:
+                _release_process_memory_with_pause(release_kind)
 
         def should_cancel() -> bool:
             return _job_status(job_id) == "cancelling"

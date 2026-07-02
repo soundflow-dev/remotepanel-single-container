@@ -323,6 +323,9 @@ TRANSFER_FILE_STREAMS=16
 TRANSFER_FILE_STREAM_MIN_SIZE=1073741824
 TRANSFER_MEMORY_TRIM_BYTES=10737418240
 TRANSFER_MEMORY_TRIM_PAUSE_SECONDS=1
+TRANSFER_MEMORY_DEEP_TRIM_BYTES=107374182400
+TRANSFER_MEMORY_DEEP_TRIM_PAUSE_SECONDS=5
+TRANSFER_MEMORY_DEEP_TRIM_PASSES=3
 SMB_REQUIRE_SIGNING=true
 SMB_AUTH_PROTOCOL=negotiate
 ```
@@ -340,6 +343,8 @@ Recommended transfer profiles:
 The total transfer size is not the only factor. A 600 GB transfer over 1 Gbps usually puts much less pressure on memory than the same transfer over multi-Gbps networking, because fewer buffers are active at the same time.
 
 `TRANSFER_MEMORY_TRIM_BYTES` makes RemotePanel pause briefly and ask Python/Linux to release unused memory every N transferred bytes across all running transfers. The default is 10 GiB globally, not 10 GiB per individual transfer. Set it to `0` to disable it, or lower it if your server has limited RAM. `TRANSFER_MEMORY_TRIM_PAUSE_SECONDS` controls the short pause after each trim.
+
+`TRANSFER_MEMORY_DEEP_TRIM_BYTES` adds a heavier global cleanup for multi-TB transfers. The default is 100 GiB across all running transfers. A deep trim runs multiple cleanup passes, controlled by `TRANSFER_MEMORY_DEEP_TRIM_PASSES`, and pauses a little longer using `TRANSFER_MEMORY_DEEP_TRIM_PAUSE_SECONDS`. This can reduce long-transfer memory buildup, but memory that is actively in use by current buffers cannot be released until those buffers finish.
 
 For trusted homelab networks, `SMB_REQUIRE_SIGNING=false` may improve SMB speed if your NAS allows unsigned SMB.
 
