@@ -329,6 +329,16 @@ SMB_AUTH_PROTOCOL=negotiate
 
 The defaults are tuned for high-throughput homelab transfers and are intentionally aggressive. For very large transfers, 32 GB RAM is recommended on the host. On smaller systems, reduce `TRANSFER_FILE_STREAMS`, `TRANSFER_PREFETCH_CHUNKS`, or `TRANSFER_CHUNK_SIZE` to lower memory usage.
 
+Recommended transfer profiles:
+
+| Scenario | Suggested settings |
+| --- | --- |
+| Normal management, terminal, stats, small/medium file operations | Keep the defaults or lower them if the host is very small. |
+| 1 Gbps network or host with around 8 GB RAM | `TRANSFER_CHUNK_SIZE=16777216`, `TRANSFER_PREFETCH_CHUNKS=4`, `TRANSFER_FILE_STREAMS=4`, `TRANSFER_MEMORY_TRIM_BYTES=5368709120` |
+| 10 Gbps homelab, large transfers, 32 GB+ RAM | Keep the default high-throughput profile. |
+
+The total transfer size is not the only factor. A 600 GB transfer over 1 Gbps usually puts much less pressure on memory than the same transfer over multi-Gbps networking, because fewer buffers are active at the same time.
+
 `TRANSFER_MEMORY_TRIM_BYTES` makes RemotePanel pause briefly and ask Python/Linux to release unused memory every N transferred bytes. The default is 10 GiB. Set it to `0` to disable it, or lower it if your server has limited RAM. `TRANSFER_MEMORY_TRIM_PAUSE_SECONDS` controls the short pause after each trim.
 
 For trusted homelab networks, `SMB_REQUIRE_SIGNING=false` may improve SMB speed if your NAS allows unsigned SMB.
