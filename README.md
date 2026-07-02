@@ -6,6 +6,12 @@ RemotePanel is an open-source, self-hosted homelab control panel for managing re
 
 RemotePanel runs as one Docker app: the React frontend is built into the image and served by the FastAPI backend, with persistent data stored in `/data`.
 
+## Recommended Host
+
+RemotePanel can run on modest hardware for normal machine management, terminal access, stats, and small file operations.
+
+For very large high-speed transfers, especially on Unraid with the default aggressive transfer profile, 32 GB RAM is recommended. Large multi-hundred-GB transfers can temporarily consume significant Docker/container memory while RemotePanel streams data and periodically asks Linux to release unused memory.
+
 ## Screenshots
 
 | Dashboard | Add Machine |
@@ -321,7 +327,7 @@ SMB_REQUIRE_SIGNING=true
 SMB_AUTH_PROTOCOL=negotiate
 ```
 
-The defaults are tuned to keep memory usage reasonable during very large transfers. On systems with plenty of RAM, increasing `TRANSFER_FILE_STREAMS` or `TRANSFER_PARALLEL_FILES` can improve throughput at the cost of higher memory usage.
+The defaults are tuned for high-throughput homelab transfers and are intentionally aggressive. For very large transfers, 32 GB RAM is recommended on the host. On smaller systems, reduce `TRANSFER_FILE_STREAMS`, `TRANSFER_PREFETCH_CHUNKS`, or `TRANSFER_CHUNK_SIZE` to lower memory usage.
 
 `TRANSFER_MEMORY_TRIM_BYTES` makes RemotePanel pause briefly and ask Python/Linux to release unused memory every N transferred bytes. The default is 10 GiB. Set it to `0` to disable it, or lower it if your server has limited RAM. `TRANSFER_MEMORY_TRIM_PAUSE_SECONDS` controls the short pause after each trim.
 
@@ -330,6 +336,8 @@ For trusted homelab networks, `SMB_REQUIRE_SIGNING=false` may improve SMB speed 
 ### Large Transfers and Memory on Unraid
 
 During very large transfers, Unraid or `docker stats` may show high Docker memory usage. This can include kernel/container accounting and I/O-related memory, so it does not always mean the RemotePanel Python process is leaking memory.
+
+With the default high-throughput profile, a host with 32 GB RAM is recommended for multi-hundred-GB transfers. Systems with less RAM may still work, but should use a more conservative transfer profile.
 
 The most useful host-side value is `available`:
 
